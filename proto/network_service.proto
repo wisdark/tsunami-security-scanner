@@ -25,6 +25,7 @@ import "software.proto";
 option java_multiple_files = true;
 option java_outer_classname = "NetworkServiceProtos";
 option java_package = "com.google.tsunami.proto";
+option go_package = "github.com/google/tsunami-security-scanner/proto";
 
 // General information about a network service running on a target.
 message NetworkService {
@@ -64,4 +65,10 @@ message ServiceContext {
 message WebServiceContext {
   // The root path of the hosted web application.
   string application_root = 1;
+
+  // The web application that is serving under the application root.
+  Software software = 2;
+
+  // The detected versions of the web application.
+  VersionSet version_set = 3;
 }

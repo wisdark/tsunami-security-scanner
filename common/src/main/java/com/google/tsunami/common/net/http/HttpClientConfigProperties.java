@@ -13,21 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package com.google.tsunami.common.net.http;
 
-// Data models for describing a scanning target.
-syntax = "proto3";
+import com.google.tsunami.common.config.annotations.ConfigProperties;
 
-package tsunami.proto;
-
-import "network.proto";
-
-option java_multiple_files = true;
-option java_outer_classname = "ScanTargetProtos";
-option java_package = "com.google.tsunami.proto";
-option go_package = "github.com/google/tsunami-security-scanner/proto";
-
-// The information about a scan target.
-message ScanTarget {
-  // The network endpoint to be scanned.
-  NetworkEndpoint network_endpoint = 1;
+/** Configuration properties for {@link HttpClient}. */
+@ConfigProperties("common.net.http")
+public final class HttpClientConfigProperties {
+  boolean trustAllCertificates = false;
 }

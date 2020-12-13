@@ -18,16 +18,15 @@ package com.google.tsunami.main.cli.option;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
 import com.beust.jcommander.Parameters;
-import com.google.common.base.Joiner;
 import com.google.tsunami.common.cli.CliOption;
 import com.google.tsunami.main.cli.option.validator.IpV4Validator;
 import com.google.tsunami.main.cli.option.validator.IpV6Validator;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Command line arguments for Tsunami scan target. */
+/** Command line arguments for Tsunami. */
 @Parameters(separators = "=")
-public final class ScanTargetCliOptions implements CliOption {
+public final class MainCliOptions implements CliOption {
 
   @Parameter(
       names = "--ip-v4-target",
@@ -43,6 +42,9 @@ public final class ScanTargetCliOptions implements CliOption {
 
   @Parameter(names = "--hostname-target", description = "The hostname of the scanning target.")
   public String hostnameTarget;
+
+  @Parameter(names = "--log-id", description = "A log ID to print in front of the logs.")
+  public String logId;
 
   @Override
   public void validate() {
@@ -61,13 +63,6 @@ public final class ScanTargetCliOptions implements CliOption {
       throw new ParameterException(
           "One of the following parameters is expected: --ip-v4-target, --ip-v6-target,"
               + " --hostname-target");
-    }
-    if (nonEmptyTargets.size() != 1) {
-      throw new ParameterException(
-          String.format(
-              "Only one of the following parameter is expected: --ip-v4-target, --ip-v6-target,"
-                  + " --hostname-target, got %d: %s",
-              nonEmptyTargets.size(), Joiner.on(",").join(nonEmptyTargets)));
     }
   }
 }

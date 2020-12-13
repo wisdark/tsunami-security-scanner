@@ -21,37 +21,21 @@ import com.google.tsunami.plugin.annotations.ForServiceName;
 import com.google.tsunami.plugin.annotations.PluginInfo;
 import com.google.tsunami.proto.FingerprintingReport;
 import com.google.tsunami.proto.NetworkService;
-import com.google.tsunami.proto.ServiceContext;
-import com.google.tsunami.proto.Software;
 import com.google.tsunami.proto.TargetInfo;
-import com.google.tsunami.proto.WebServiceContext;
 
-/** A fake ServiceFingerprinter plugin for testing purpose only. */
+/** A fake ServiceFingerprinter plugin that instantly fails for testing purpose only. */
 @PluginInfo(
     type = PluginType.SERVICE_FINGERPRINT,
-    name = "FakeServiceFingerprinter",
+    name = "FailedServiceFingerprinter",
     version = "v0.1",
-    description = "A fake ServiceFingerprinter.",
+    description = "A fake ServiceFingerprinter that instantly fails.",
     author = "fake",
-    bootstrapModule = FakeServiceFingerprinterBootstrapModule.class)
+    bootstrapModule = FailedServiceFingerprinterBootstrapModule.class)
 @ForServiceName("http")
-public class FakeServiceFingerprinter implements ServiceFingerprinter {
-  public static final Software IDENTIFIED_SOFTWARE =
-      Software.newBuilder().setName("Jenkins").build();
-
-  public static NetworkService addWebServiceContext(NetworkService networkService) {
-    return networkService.toBuilder()
-        .setServiceContext(
-            ServiceContext.newBuilder()
-                .setWebServiceContext(
-                    WebServiceContext.newBuilder().setSoftware(IDENTIFIED_SOFTWARE)))
-        .build();
-  }
+public final class FailedServiceFingerprinter implements ServiceFingerprinter {
 
   @Override
   public FingerprintingReport fingerprint(TargetInfo targetInfo, NetworkService networkService) {
-    return FingerprintingReport.newBuilder()
-        .addNetworkServices(addWebServiceContext(networkService))
-        .build();
+    throw new RuntimeException("ServiceFingerprinter failed");
   }
 }

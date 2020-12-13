@@ -29,6 +29,7 @@ import "vulnerability.proto";
 option java_multiple_files = true;
 option java_outer_classname = "ScanResultsProtos";
 option java_package = "com.google.tsunami.proto";
+option go_package = "github.com/google/tsunami-security-scanner/proto";
 
 // Execution status of the scan.
 // NEXT ID: 5
@@ -58,7 +59,7 @@ message ScanFinding {
 }
 
 // Full scanning results.
-// NEXT ID: 7
+// NEXT ID: 8
 message ScanResults {
   // Status of this scan.
   ScanStatus scan_status = 1;
@@ -77,6 +78,9 @@ message ScanResults {
 
   // Detection reports from all triggered Tsunami detection plugins.
   FullDetectionReports full_detection_reports = 5;
+
+  // Reconnaissance reports from the fingerprinting stage.
+  ReconnaissanceReport reconnaissance_report = 7;
 }
 
 // Full detection reports from all triggered Tsunami detection plugins.

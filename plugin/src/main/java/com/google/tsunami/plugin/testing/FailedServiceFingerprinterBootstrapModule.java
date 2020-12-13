@@ -13,21 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package com.google.tsunami.plugin.testing;
 
-// Data models for describing a scanning target.
-syntax = "proto3";
+import com.google.tsunami.plugin.PluginBootstrapModule;
 
-package tsunami.proto;
+/** Bootstrapping module for {@link FailedServiceFingerprinter}. */
+public final class FailedServiceFingerprinterBootstrapModule extends PluginBootstrapModule {
 
-import "network.proto";
-
-option java_multiple_files = true;
-option java_outer_classname = "ScanTargetProtos";
-option java_package = "com.google.tsunami.proto";
-option go_package = "github.com/google/tsunami-security-scanner/proto";
-
-// The information about a scan target.
-message ScanTarget {
-  // The network endpoint to be scanned.
-  NetworkEndpoint network_endpoint = 1;
+  @Override
+  protected void configurePlugin() {
+    registerPlugin(FailedServiceFingerprinter.class);
+  }
 }

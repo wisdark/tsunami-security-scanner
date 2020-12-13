@@ -39,6 +39,7 @@ import com.google.tsunami.plugin.testing.FakeVulnDetectorBootstrapModule;
 import com.google.tsunami.plugin.testing.FakeVulnDetectorBootstrapModule2;
 import com.google.tsunami.proto.DetectionReport;
 import com.google.tsunami.proto.NetworkService;
+import com.google.tsunami.proto.ReconnaissanceReport;
 import com.google.tsunami.proto.ScanFinding;
 import com.google.tsunami.proto.ScanResults;
 import com.google.tsunami.proto.ScanStatus;
@@ -102,9 +103,8 @@ public final class TsunamiCliTest {
   public void run_whenIpTarget_generatesAndArchivesCorrectResult()
       throws InterruptedException, ExecutionException, ScanningWorkflowException, IOException {
     NetworkService expectedNetworkService =
-        FakePortScanner.getFakeNetworkService(NetworkEndpointUtils.forIp(IP_TARGET)).toBuilder()
-            .setSoftware(FakeServiceFingerprinter.IDENTIFIED_SOFTWARE)
-            .build();
+        FakeServiceFingerprinter.addWebServiceContext(
+            FakePortScanner.getFakeNetworkService(NetworkEndpointUtils.forIp(IP_TARGET)));
 
     runCli(ImmutableMap.of(), "--ip-v4-target=" + IP_TARGET);
 
@@ -120,16 +120,26 @@ public final class TsunamiCliTest {
                     FakeVulnDetector2.getFakeDetectionReport(targetInfo, expectedNetworkService))
                 .map(TsunamiCliTest::buildScanFindingFromDetectionReport)
                 .toArray());
+    assertThat(storedScanResult.getReconnaissanceReport())
+        .isEqualTo(
+            ReconnaissanceReport.newBuilder()
+                .setTargetInfo(
+                    TargetInfo.newBuilder()
+                        .addNetworkEndpoints(NetworkEndpointUtils.forIp(IP_TARGET)))
+                .addNetworkServices(
+                    FakeServiceFingerprinter.addWebServiceContext(
+                        FakePortScanner.getFakeNetworkService(
+                            NetworkEndpointUtils.forIp(IP_TARGET))))
+                .build());
   }
 
   @Test
   public void run_whenHostnameTarget_generatesAndArchivesCorrectResult()
       throws InterruptedException, ExecutionException, ScanningWorkflowException, IOException {
     NetworkService expectedNetworkService =
-        FakePortScanner.getFakeNetworkService(NetworkEndpointUtils.forHostname(HOSTNAME_TARGET))
-            .toBuilder()
-            .setSoftware(FakeServiceFingerprinter.IDENTIFIED_SOFTWARE)
-            .build();
+        FakeServiceFingerprinter.addWebServiceContext(
+            FakePortScanner.getFakeNetworkService(
+                NetworkEndpointUtils.forHostname(HOSTNAME_TARGET)));
 
     runCli(ImmutableMap.of(), "--hostname-target=" + HOSTNAME_TARGET);
 
@@ -147,6 +157,41 @@ public final class TsunamiCliTest {
                     FakeVulnDetector2.getFakeDetectionReport(targetInfo, expectedNetworkService))
                 .map(TsunamiCliTest::buildScanFindingFromDetectionReport)
                 .toArray());
+    assertThat(storedScanResult.getReconnaissanceReport())
+        .isEqualTo(
+            ReconnaissanceReport.newBuilder()
+                .setTargetInfo(
+                    TargetInfo.newBuilder()
+                        .addNetworkEndpoints(NetworkEndpointUtils.forHostname(HOSTNAME_TARGET)))
+                .addNetworkServices(
+                    FakeServiceFingerprinter.addWebServiceContext(
+                        FakePortScanner.getFakeNetworkService(
+                            NetworkEndpointUtils.forHostname(HOSTNAME_TARGET))))
+                .build());
+  }
+
+  @Test
+  public void run_whenIpAndHostnameTarget_generatesCorrectResult()
+      throws InterruptedException, ExecutionException, IOException {
+
+    runCli(
+        ImmutableMap.of(), "--ip-v4-target=" + IP_TARGET, "--hostname-target=" + HOSTNAME_TARGET);
+
+    verify(scanResultsArchiver, times(1)).archive(scanResultsCaptor.capture());
+    ScanResults storedScanResult = scanResultsCaptor.getValue();
+    assertThat(storedScanResult.getScanStatus()).isEqualTo(ScanStatus.SUCCEEDED);
+    assertThat(storedScanResult.getReconnaissanceReport())
+        .isEqualTo(
+            ReconnaissanceReport.newBuilder()
+                .setTargetInfo(
+                    TargetInfo.newBuilder()
+                        .addNetworkEndpoints(
+                            NetworkEndpointUtils.forIpAndHostname(IP_TARGET, HOSTNAME_TARGET)))
+                .addNetworkServices(
+                    FakeServiceFingerprinter.addWebServiceContext(
+                        FakePortScanner.getFakeNetworkService(
+                            NetworkEndpointUtils.forIpAndHostname(IP_TARGET, HOSTNAME_TARGET))))
+                .build());
   }
 
   private static ScanFinding buildScanFindingFromDetectionReport(DetectionReport detectionReport) {

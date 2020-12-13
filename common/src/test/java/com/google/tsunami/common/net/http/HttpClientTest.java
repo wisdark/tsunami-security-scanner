@@ -20,6 +20,7 @@ import static com.google.common.base.Strings.nullToEmpty;
 import static com.google.common.net.HttpHeaders.ACCEPT;
 import static com.google.common.net.HttpHeaders.CONTENT_LENGTH;
 import static com.google.common.net.HttpHeaders.CONTENT_TYPE;
+import static com.google.common.net.HttpHeaders.HOST;
 import static com.google.common.net.HttpHeaders.LOCATION;
 import static com.google.common.net.HttpHeaders.USER_AGENT;
 import static com.google.common.truth.Truth.assertThat;
@@ -34,10 +35,14 @@ import com.google.common.net.MediaType;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.inject.Guice;
 import com.google.protobuf.ByteString;
+import com.google.tsunami.common.data.NetworkEndpointUtils;
+import com.google.tsunami.proto.NetworkService;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import javax.inject.Inject;
+import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.Dispatcher;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -75,8 +80,9 @@ public final class HttpClientTest {
             .setBody(responseBody));
     mockWebServer.start();
 
-    HttpResponse response =
-        httpClient.send(get(mockWebServer.url("/test/get").toString()).withEmptyHeaders().build());
+    String requestUrl = mockWebServer.url("/test/get").toString();
+
+    HttpResponse response = httpClient.send(get(requestUrl).withEmptyHeaders().build());
 
     assertThat(response)
         .isEqualTo(
@@ -89,6 +95,7 @@ public final class HttpClientTest {
                         .addHeader(CONTENT_LENGTH, String.valueOf(responseBody.length()))
                         .build())
                 .setBodyBytes(ByteString.copyFrom(responseBody, UTF_8))
+                .setResponseUrl(HttpUrl.parse(requestUrl))
                 .build());
   }
 
@@ -103,10 +110,9 @@ public final class HttpClientTest {
             .setBody(responseBody));
     mockWebServer.start();
 
-    HttpResponse response =
-        httpClient
-            .sendAsync(get(mockWebServer.url("/test/get").toString()).withEmptyHeaders().build())
-            .get();
+    String requestUrl = mockWebServer.url("/test/get").toString();
+
+    HttpResponse response = httpClient.sendAsync(get(requestUrl).withEmptyHeaders().build()).get();
 
     assertThat(response)
         .isEqualTo(
@@ -119,6 +125,7 @@ public final class HttpClientTest {
                         .addHeader(CONTENT_LENGTH, String.valueOf(responseBody.length()))
                         .build())
                 .setBodyBytes(ByteString.copyFrom(responseBody, UTF_8))
+                .setResponseUrl(HttpUrl.parse(requestUrl))
                 .build());
   }
 
@@ -132,9 +139,9 @@ public final class HttpClientTest {
             .setBody(responseBody));
     mockWebServer.start();
 
-    HttpResponse response =
-        httpClient.send(
-            head(mockWebServer.url("/test/head").toString()).withEmptyHeaders().build());
+    String requestUrl = mockWebServer.url("/test/head").toString();
+
+    HttpResponse response = httpClient.send(head(requestUrl).withEmptyHeaders().build());
 
     assertThat(response)
         .isEqualTo(
@@ -147,6 +154,7 @@ public final class HttpClientTest {
                         .addHeader(CONTENT_LENGTH, String.valueOf(responseBody.length()))
                         .build())
                 .setBodyBytes(Optional.empty())
+                .setResponseUrl(HttpUrl.parse(requestUrl))
                 .build());
   }
 
@@ -161,10 +169,9 @@ public final class HttpClientTest {
             .setBody(responseBody));
     mockWebServer.start();
 
-    HttpResponse response =
-        httpClient
-            .sendAsync(head(mockWebServer.url("/test/head").toString()).withEmptyHeaders().build())
-            .get();
+    String requestUrl = mockWebServer.url("/test/head").toString();
+
+    HttpResponse response = httpClient.sendAsync(head(requestUrl).withEmptyHeaders().build()).get();
 
     assertThat(response)
         .isEqualTo(
@@ -177,6 +184,7 @@ public final class HttpClientTest {
                         .addHeader(CONTENT_LENGTH, String.valueOf(responseBody.length()))
                         .build())
                 .setBodyBytes(Optional.empty())
+                .setResponseUrl(HttpUrl.parse(requestUrl))
                 .build());
   }
 
@@ -190,9 +198,11 @@ public final class HttpClientTest {
             .setBody(responseBody));
     mockWebServer.start();
 
+    String requestUrl = mockWebServer.url("/test/post").toString();
+
     HttpResponse response =
         httpClient.send(
-            post(mockWebServer.url("/test/post").toString())
+            post(requestUrl)
                 .setHeaders(
                     HttpHeaders.builder()
                         .addHeader(ACCEPT, MediaType.JSON_UTF_8.toString())
@@ -210,6 +220,7 @@ public final class HttpClientTest {
                         .addHeader(CONTENT_LENGTH, String.valueOf(responseBody.length()))
                         .build())
                 .setBodyBytes(ByteString.copyFrom(responseBody, UTF_8))
+                .setResponseUrl(HttpUrl.parse(requestUrl))
                 .build());
   }
 
@@ -224,10 +235,12 @@ public final class HttpClientTest {
             .setBody(responseBody));
     mockWebServer.start();
 
+    String requestUrl = mockWebServer.url("/test/post").toString();
+
     HttpResponse response =
         httpClient
             .sendAsync(
-                post(mockWebServer.url("/test/post").toString())
+                post(requestUrl)
                     .setHeaders(
                         HttpHeaders.builder()
                             .addHeader(ACCEPT, MediaType.JSON_UTF_8.toString())
@@ -246,6 +259,7 @@ public final class HttpClientTest {
                         .addHeader(CONTENT_LENGTH, String.valueOf(responseBody.length()))
                         .build())
                 .setBodyBytes(ByteString.copyFrom(responseBody, UTF_8))
+                .setResponseUrl(HttpUrl.parse(requestUrl))
                 .build());
   }
 
@@ -260,9 +274,9 @@ public final class HttpClientTest {
             .setBody(responseBody));
     mockWebServer.start();
 
-    HttpResponse response =
-        httpClient.send(
-            post(mockWebServer.url("/test/post").toString()).withEmptyHeaders().build());
+    String requestUrl = mockWebServer.url("/test/post").toString();
+
+    HttpResponse response = httpClient.send(post(requestUrl).withEmptyHeaders().build());
 
     assertThat(response)
         .isEqualTo(
@@ -275,6 +289,7 @@ public final class HttpClientTest {
                         .addHeader(CONTENT_LENGTH, String.valueOf(responseBody.length()))
                         .build())
                 .setBodyBytes(ByteString.copyFrom(responseBody, UTF_8))
+                .setResponseUrl(HttpUrl.parse(requestUrl))
                 .build());
   }
 
@@ -289,10 +304,9 @@ public final class HttpClientTest {
             .setBody(responseBody));
     mockWebServer.start();
 
-    HttpResponse response =
-        httpClient
-            .sendAsync(post(mockWebServer.url("/test/post").toString()).withEmptyHeaders().build())
-            .get();
+    String requestUrl = mockWebServer.url("/test/post").toString();
+
+    HttpResponse response = httpClient.sendAsync(post(requestUrl).withEmptyHeaders().build()).get();
 
     assertThat(response)
         .isEqualTo(
@@ -305,6 +319,7 @@ public final class HttpClientTest {
                         .addHeader(CONTENT_LENGTH, String.valueOf(responseBody.length()))
                         .build())
                 .setBodyBytes(ByteString.copyFrom(responseBody, UTF_8))
+                .setResponseUrl(HttpUrl.parse(requestUrl))
                 .build());
   }
 
@@ -324,6 +339,9 @@ public final class HttpClientTest {
                     .withEmptyHeaders()
                     .build());
 
+    HttpUrl redirectDestinationUrl =
+        HttpUrl.parse(mockWebServer.url(RedirectDispatcher.REDIRECT_DESTINATION_PATH).toString());
+
     assertThat(response)
         .isEqualTo(
             HttpResponse.builder()
@@ -333,6 +351,7 @@ public final class HttpClientTest {
                         .addHeader(CONTENT_LENGTH, String.valueOf(responseBody.length()))
                         .build())
                 .setBodyBytes(ByteString.copyFrom(responseBody, UTF_8))
+                .setResponseUrl(redirectDestinationUrl)
                 .build());
   }
 
@@ -342,6 +361,9 @@ public final class HttpClientTest {
     String responseBody = "test response";
     mockWebServer.setDispatcher(new RedirectDispatcher(responseBody));
     mockWebServer.start();
+
+    HttpUrl redirectDestinationUrl =
+        HttpUrl.parse(mockWebServer.url(RedirectDispatcher.REDIRECT_DESTINATION_PATH).toString());
 
     HttpResponse response =
         httpClient
@@ -363,6 +385,7 @@ public final class HttpClientTest {
                         .addHeader(CONTENT_LENGTH, String.valueOf(responseBody.length()))
                         .build())
                 .setBodyBytes(ByteString.copyFrom(responseBody, UTF_8))
+                .setResponseUrl(redirectDestinationUrl)
                 .build());
   }
 
@@ -372,15 +395,14 @@ public final class HttpClientTest {
     mockWebServer.setDispatcher(new RedirectDispatcher(responseBody));
     mockWebServer.start();
 
+    String redirectingUrl = mockWebServer.url(RedirectDispatcher.REDIRECT_PATH).toString();
+
     HttpResponse response =
         httpClient
             .modify()
             .setFollowRedirects(false)
             .build()
-            .send(
-                get(mockWebServer.url(RedirectDispatcher.REDIRECT_PATH).toString())
-                    .withEmptyHeaders()
-                    .build());
+            .send(get(redirectingUrl).withEmptyHeaders().build());
 
     assertThat(response.status()).isEqualTo(HttpStatus.FOUND);
     assertThat(response.headers())
@@ -400,6 +422,7 @@ public final class HttpClientTest {
                         .addHeader(LOCATION, RedirectDispatcher.REDIRECT_DESTINATION_PATH)
                         .build())
                 .setBodyBytes(ByteString.EMPTY)
+                .setResponseUrl(HttpUrl.parse(redirectingUrl))
                 .build());
   }
 
@@ -410,15 +433,14 @@ public final class HttpClientTest {
     mockWebServer.setDispatcher(new RedirectDispatcher(responseBody));
     mockWebServer.start();
 
+    String redirectingUrl = mockWebServer.url(RedirectDispatcher.REDIRECT_PATH).toString();
+
     HttpResponse response =
         httpClient
             .modify()
             .setFollowRedirects(false)
             .build()
-            .sendAsync(
-                get(mockWebServer.url(RedirectDispatcher.REDIRECT_PATH).toString())
-                    .withEmptyHeaders()
-                    .build())
+            .sendAsync(get(redirectingUrl).withEmptyHeaders().build())
             .get();
 
     assertThat(response.status()).isEqualTo(HttpStatus.FOUND);
@@ -439,6 +461,7 @@ public final class HttpClientTest {
                         .addHeader(LOCATION, RedirectDispatcher.REDIRECT_DESTINATION_PATH)
                         .build())
                 .setBodyBytes(ByteString.EMPTY)
+                .setResponseUrl(HttpUrl.parse(redirectingUrl))
                 .build());
   }
 
@@ -487,6 +510,30 @@ public final class HttpClientTest {
     assertThat(ex).hasCauseThat().isInstanceOf(IOException.class);
   }
 
+  @Test
+  public void send_whenHostnameAndIpInRequest_useHostnameAsProxy() throws IOException {
+    InetAddress loopbackAddress = InetAddress.getLoopbackAddress();
+    String host = "host.com";
+    mockWebServer.setDispatcher(new HostnameTestDispatcher(host));
+    mockWebServer.start(loopbackAddress, 0);
+    int port = mockWebServer.url("/").port();
+
+    NetworkService networkService =
+        NetworkService.newBuilder()
+            .setNetworkEndpoint(
+                NetworkEndpointUtils.forIpHostnameAndPort(
+                    loopbackAddress.getHostAddress(), host, port))
+            .build();
+
+    // The request to host.com should be sent through mockWebServer's IP.
+    HttpResponse response =
+        httpClient.send(
+            get(String.format("http://host.com:%d/test/get", port)).withEmptyHeaders().build(),
+            networkService);
+
+    assertThat(response.status()).isEqualTo(HttpStatus.OK);
+  }
+
   static final class RedirectDispatcher extends Dispatcher {
     static final String REDIRECT_PATH = "/redirect";
     static final String REDIRECT_DESTINATION_PATH = "/redirect-dest";
@@ -519,6 +566,22 @@ public final class HttpClientTest {
     public MockResponse dispatch(RecordedRequest recordedRequest) {
       if (recordedRequest.getPath().equals(USERAGENT_TEST_PATH)
           && nullToEmpty(recordedRequest.getHeader(USER_AGENT)).equals("TsunamiSecurityScanner")) {
+        return new MockResponse().setResponseCode(HttpStatus.OK.code());
+      }
+      return new MockResponse().setResponseCode(HttpStatus.NOT_FOUND.code());
+    }
+  }
+
+  static final class HostnameTestDispatcher extends Dispatcher {
+    private final String expectedHost;
+
+    HostnameTestDispatcher(String expectedHost) {
+      this.expectedHost = checkNotNull(expectedHost);
+    }
+
+    @Override
+    public MockResponse dispatch(RecordedRequest recordedRequest) {
+      if (nullToEmpty(recordedRequest.getHeader(HOST)).startsWith(expectedHost)) {
         return new MockResponse().setResponseCode(HttpStatus.OK.code());
       }
       return new MockResponse().setResponseCode(HttpStatus.NOT_FOUND.code());

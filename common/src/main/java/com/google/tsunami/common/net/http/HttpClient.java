@@ -24,10 +24,13 @@ import com.google.common.flogger.GoogleLogger;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import com.google.protobuf.ByteString;
+import com.google.tsunami.proto.NetworkService;
 import java.io.IOException;
 import javax.inject.Inject;
+import javax.net.ssl.HttpsURLConnection;
 import okhttp3.Call;
 import okhttp3.Callback;
+import okhttp3.Dns;
 import okhttp3.Headers;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -35,11 +38,12 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
+import org.checkerframework.checker.nullness.qual.Nullable;
 
 /** A client library that communicates with remote servers via the HTTP protocol. */
 public final class HttpClient {
   private static final GoogleLogger logger = GoogleLogger.forEnclosingClass();
-  private static final String TSUNAMI_USER_AGENT = "TsunamiSecurityScanner";
+  public static final String TSUNAMI_USER_AGENT = "TsunamiSecurityScanner";
 
   private final OkHttpClient okHttpClient;
 
@@ -50,21 +54,44 @@ public final class HttpClient {
 
   /** Sends the given HTTP request using this client, blocking until full response is received. */
   public HttpResponse send(HttpRequest httpRequest) throws IOException {
+    return send(httpRequest, null);
+  }
+
+  /**
+   * Sends the given HTTP request using this client blocking until full response is received. If
+   * {@code networkService} is not null, the host header is set according to the service's header
+   * field even if it resolves to a different ip.
+   */
+  public HttpResponse send(HttpRequest httpRequest, @Nullable NetworkService networkService)
+      throws IOException {
     logger.atInfo().log(
         "Sending HTTP '%s' request to '%s'.", httpRequest.method(), httpRequest.url().toString());
+
+    OkHttpClient callHttpClient = clientWithHostnameAsProxy(networkService);
     try (Response okHttpResponse =
-        okHttpClient.newCall(buildOkHttpRequest(httpRequest)).execute()) {
+        callHttpClient.newCall(buildOkHttpRequest(httpRequest)).execute()) {
       return parseResponse(okHttpResponse);
     }
   }
 
   /** Sends the given HTTP request using this client asynchronously. */
   public ListenableFuture<HttpResponse> sendAsync(HttpRequest httpRequest) {
+    return sendAsync(httpRequest, null);
+  }
+
+  /**
+   * Sends the given HTTP request using this client asynchronously. If {@code networkService} is not
+   * null, the host header is set according to the service's header field even if it resolves to a
+   * different ip.
+   */
+  public ListenableFuture<HttpResponse> sendAsync(
+      HttpRequest httpRequest, @Nullable NetworkService networkService) {
     logger.atInfo().log(
         "Sending async HTTP '%s' request to '%s'.",
         httpRequest.method(), httpRequest.url().toString());
+    OkHttpClient callHttpClient = clientWithHostnameAsProxy(networkService);
     SettableFuture<HttpResponse> responseFuture = SettableFuture.create();
-    Call requestCall = okHttpClient.newCall(buildOkHttpRequest(httpRequest));
+    Call requestCall = callHttpClient.newCall(buildOkHttpRequest(httpRequest));
 
     try {
       requestCall.enqueue(
@@ -98,6 +125,36 @@ public final class HttpClient {
     return responseFuture;
   }
 
+  /**
+   * Returns a modified HTTP client that's configured to connect to the {@code networkService}'s IP
+   * and use its hostname in the host header, when both a hostname and an IP address is specified.
+   * Returns an unmodified HTTP client otherwise.
+   */
+  private OkHttpClient clientWithHostnameAsProxy(NetworkService networkService) {
+    if (networkService == null) {
+      return this.okHttpClient;
+    }
+    String serviceIp = networkService.getNetworkEndpoint().getIpAddress().getAddress();
+    String serviceHostname = networkService.getNetworkEndpoint().getHostname().getName();
+    return this.okHttpClient
+        .newBuilder()
+        .dns(
+            hostname -> {
+              if (hostname.equals(serviceHostname)) {
+                hostname = serviceIp;
+              }
+              return Dns.SYSTEM.lookup(hostname);
+            })
+        .hostnameVerifier(
+            (hostname, session) -> {
+              if (hostname.equals(serviceHostname)) {
+                return true;
+              }
+              return HttpsURLConnection.getDefaultHostnameVerifier().verify(hostname, session);
+            })
+        .build();
+  }
+
   private static Request buildOkHttpRequest(HttpRequest httpRequest) {
     Request.Builder okRequestBuilder = new Request.Builder().url(httpRequest.url());
 
@@ -121,6 +178,9 @@ public final class HttpClient {
       case POST:
         okRequestBuilder.post(buildRequestBody(httpRequest));
         break;
+      case DELETE:
+        okRequestBuilder.delete(buildRequestBody(httpRequest));
+        break;
     }
 
     return okRequestBuilder.build();
@@ -142,7 +202,8 @@ public final class HttpClient {
     HttpResponse.Builder httpResponseBuilder =
         HttpResponse.builder()
             .setStatus(HttpStatus.fromCode(okResponse.code()))
-            .setHeaders(convertHeaders(okResponse.headers()));
+            .setHeaders(convertHeaders(okResponse.headers()))
+            .setResponseUrl(okResponse.request().url());
     if (!okResponse.request().method().equals(HttpMethod.HEAD.name())
         && okResponse.body() != null) {
       httpResponseBuilder.setBodyBytes(ByteString.copyFrom(okResponse.body().bytes()));

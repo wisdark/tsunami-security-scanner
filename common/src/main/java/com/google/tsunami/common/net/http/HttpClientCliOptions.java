@@ -13,21 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package com.google.tsunami.common.net.http;
 
-// Data models for describing a scanning target.
-syntax = "proto3";
+import com.beust.jcommander.Parameter;
+import com.beust.jcommander.Parameters;
+import com.google.tsunami.common.cli.CliOption;
 
-package tsunami.proto;
+/** Command line argument for {@link HttpClient}. */
+@Parameters(separators = "=")
+public final class HttpClientCliOptions implements CliOption {
 
-import "network.proto";
+  @Parameter(
+      names = "--http-client-trust-all-certificates",
+      description =
+          "Whether the HTTP client should trust all certificates on HTTPS traffic. Default false.")
+  boolean trustAllCertificates = false;
 
-option java_multiple_files = true;
-option java_outer_classname = "ScanTargetProtos";
-option java_package = "com.google.tsunami.proto";
-option go_package = "github.com/google/tsunami-security-scanner/proto";
-
-// The information about a scan target.
-message ScanTarget {
-  // The network endpoint to be scanned.
-  NetworkEndpoint network_endpoint = 1;
+  @Override
+  public void validate() {}
 }

@@ -13,21 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package com.google.tsunami.plugin.annotations;
 
-// Data models for describing a scanning target.
-syntax = "proto3";
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-package tsunami.proto;
-
-import "network.proto";
-
-option java_multiple_files = true;
-option java_outer_classname = "ScanTargetProtos";
-option java_package = "com.google.tsunami.proto";
-option go_package = "github.com/google/tsunami-security-scanner/proto";
-
-// The information about a scan target.
-message ScanTarget {
-  // The network endpoint to be scanned.
-  NetworkEndpoint network_endpoint = 1;
-}
+/**
+ * An util annotation that is shorthand of {@code {@literal @}ForServiceName({"http", "https",
+ * ...})}, marking that the intended network services of a plugin are web services.
+ */
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface ForWebService {}

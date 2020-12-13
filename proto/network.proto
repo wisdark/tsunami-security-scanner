@@ -22,6 +22,7 @@ package tsunami.proto;
 option java_multiple_files = true;
 option java_outer_classname = "NetworkProtos";
 option java_package = "com.google.tsunami.proto";
+option go_package = "github.com/google/tsunami-security-scanner/proto";
 
 // The address family of an IP address.
 enum AddressFamily {
@@ -66,6 +67,12 @@ message NetworkEndpoint {
 
     // The network endpoint is represented by a hostname and port pair.
     HOSTNAME_PORT = 4;
+
+    // The network endpoint is represented by an IP address and hostname.
+    IP_HOSTNAME = 5;
+
+    // The network endpoint is represented by an IP address, hostname and port.
+    IP_HOSTNAME_PORT = 6;
   }
 
   // Type of the network endpoint.
