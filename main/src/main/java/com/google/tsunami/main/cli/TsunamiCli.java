@@ -20,7 +20,9 @@ import static com.google.tsunami.common.data.NetworkEndpointUtils.forHostname;
 import static com.google.tsunami.common.data.NetworkEndpointUtils.forIp;
 import static com.google.tsunami.common.data.NetworkEndpointUtils.forIpAndHostname;
 
+import com.google.common.base.Splitter;
 import com.google.common.base.Stopwatch;
+import com.google.common.collect.Iterables;
 import com.google.common.flogger.GoogleLogger;
 import com.google.inject.AbstractModule;
 import com.google.inject.Guice;
@@ -38,6 +40,7 @@ import com.google.tsunami.common.time.SystemUtcClockModule;
 import com.google.tsunami.main.cli.option.MainCliOptions;
 import com.google.tsunami.plugin.PluginExecutionModule;
 import com.google.tsunami.plugin.PluginLoadingModule;
+import com.google.tsunami.plugin.payload.PayloadGeneratorModule;
 import com.google.tsunami.proto.ScanResults;
 import com.google.tsunami.proto.ScanStatus;
 import com.google.tsunami.proto.ScanTarget;
@@ -46,6 +49,7 @@ import com.google.tsunami.workflow.ScanningWorkflowException;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ScanResult;
 import java.io.IOException;
+import java.security.SecureRandom;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import javax.inject.Inject;
@@ -130,16 +134,29 @@ public final class TsunamiCli {
 
     @Override
     protected void configure() {
+      // TODO(b/171405612): Find a way to use the log ID extracted by the CLI options.
+      String logId = extractLogId(args);
       install(new ClassGraphModule(classScanResult));
       install(new ConfigModule(classScanResult, tsunamiConfig));
       install(new CliOptionsModule(classScanResult, "TsunamiCli", args));
       install(new SystemUtcClockModule());
       install(new CommandExecutorModule());
-      install(new HttpClientModule.Builder().build());
+      install(new HttpClientModule.Builder().setLogId(logId).build());
       install(new GoogleCloudStorageArchiverModule());
       install(new ScanResultsArchiverModule());
       install(new PluginExecutionModule());
       install(new PluginLoadingModule(classScanResult));
+      install(new PayloadGeneratorModule(new SecureRandom()));
+    }
+
+    private String extractLogId(String[] args) {
+      // TODO(b/171405612): Use the Flag class instead of manual parsing.
+      for (int i = 0; i < args.length; ++i) {
+        if (args[i].startsWith("--log-id=")) {
+          return Iterables.get(Splitter.on('=').split(args[i]), 1) + ": ";
+        }
+      }
+      return "";
     }
   }
 
@@ -191,7 +208,7 @@ public final class TsunamiCli {
 
       return configLoader.loadConfig();
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Error loading config.", e);
+      throw new LinkageError("Error loading config.", e);
     }
   }
 }

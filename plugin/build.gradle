@@ -1,5 +1,5 @@
 
-description = 'Tsunami: Common'
+description = 'Tsunami: Plugin'
 
 dependencies {
     compile project(':tsunami-common')
@@ -11,11 +11,14 @@ dependencies {
     compile deps.guava
     compile deps.guice
     compile deps.javax_inject
+    compile deps.mock_web_server
     compile deps.protobuf
     compile deps.protobuf_util
+    compile deps.tcs_common, deps.tcs_proto
     annotationProcessor deps.autovalue_annotation_processor
 
     testCompile deps.guava_testlib
     testCompile deps.junit
+    testCompile deps.mock_web_server
     testCompile deps.truth, deps.truth8, deps.truth_protobuf
 }
