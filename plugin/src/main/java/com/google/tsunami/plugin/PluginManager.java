@@ -17,14 +17,15 @@ package com.google.tsunami.plugin;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.tsunami.common.data.NetworkServiceUtils.isWebService;
+import static java.util.Arrays.stream;
 
 import com.google.auto.value.AutoValue;
 import com.google.common.base.Ascii;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Streams;
+import com.google.tsunami.proto.MatchedPlugin;
 import com.google.tsunami.proto.NetworkService;
 import com.google.tsunami.proto.ReconnaissanceReport;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -95,10 +96,25 @@ public class PluginManager {
   public ImmutableList<PluginMatchingResult<VulnDetector>> getVulnDetectors(
       ReconnaissanceReport reconnaissanceReport) {
     return tsunamiPlugins.entrySet().stream()
-        .filter(entry -> entry.getKey().type().equals(PluginType.VULN_DETECTION))
-        .map(entry -> matchVulnDetectors(entry.getKey(), entry.getValue(), reconnaissanceReport))
+        .filter(entry -> isVulnDetector(entry.getKey()))
+        .map(entry -> matchAllVulnDetectors(entry.getKey(), entry.getValue(), reconnaissanceReport))
         .flatMap(Streams::stream)
         .collect(toImmutableList());
+  }
+
+  private static boolean isVulnDetector(PluginDefinition pluginDefinition) {
+    return pluginDefinition.type().equals(PluginType.VULN_DETECTION)
+        || pluginDefinition.type().equals(PluginType.REMOTE_VULN_DETECTION);
+  }
+
+  private static Optional<PluginMatchingResult<VulnDetector>> matchAllVulnDetectors(
+      PluginDefinition pluginDefinition,
+      Provider<TsunamiPlugin> vulnDetectorProvider,
+      ReconnaissanceReport reconnaissanceReport) {
+    if (pluginDefinition.type().equals(PluginType.REMOTE_VULN_DETECTION)) {
+      return matchRemoteVulnDetectors(pluginDefinition, vulnDetectorProvider, reconnaissanceReport);
+    }
+    return matchVulnDetectors(pluginDefinition, vulnDetectorProvider, reconnaissanceReport);
   }
 
   private static Optional<PluginMatchingResult<VulnDetector>> matchVulnDetectors(
@@ -132,17 +148,68 @@ public class PluginManager {
                 .build());
   }
 
+  private static Optional<PluginMatchingResult<VulnDetector>> matchRemoteVulnDetectors(
+      PluginDefinition pluginDefinition,
+      Provider<TsunamiPlugin> tsunamiPlugin,
+      ReconnaissanceReport reconnaissanceReport) {
+    var remoteVulnDetector = (RemoteVulnDetector) tsunamiPlugin.get();
+    var builder =
+        PluginMatchingResult.<VulnDetector>builder()
+            .setTsunamiPlugin(remoteVulnDetector)
+            // PluginDefinition class for the RemoteVulnDetector.
+            .setPluginDefinition(pluginDefinition)
+            .addAllMatchedServices(reconnaissanceReport.getNetworkServicesList());
+    for (com.google.tsunami.proto.PluginDefinition remotePluginDefinition :
+        remoteVulnDetector.getAllPlugins()) {
+      var matchedPluginBuilder = MatchedPlugin.newBuilder();
+      if (!remotePluginDefinition.hasTargetServiceName()
+          && !remotePluginDefinition.hasTargetSoftware()
+          && !remotePluginDefinition.getForWebService()) {
+        matchedPluginBuilder
+            .setPlugin(remotePluginDefinition)
+            .addAllServices(reconnaissanceReport.getNetworkServicesList());
+      } else {
+        matchedPluginBuilder
+            .setPlugin(remotePluginDefinition)
+            .addAllServices(
+                reconnaissanceReport.getNetworkServicesList().stream()
+                    .filter(
+                        networkService ->
+                            hasMatchingServiceName(networkService, remotePluginDefinition)
+                                || hasMatchingSoftware(networkService, remotePluginDefinition))
+                    .collect(toImmutableList()));
+      }
+      remoteVulnDetector.addMatchedPluginToDetect(matchedPluginBuilder.build());
+    }
+    return Optional.of(builder.build());
+  }
+
   private static boolean hasMatchingServiceName(
       NetworkService networkService, PluginDefinition pluginDefinition) {
     String serviceName = networkService.getServiceName();
     boolean hasServiceNameMatch =
         pluginDefinition.targetServiceName().isPresent()
             && (serviceName.isEmpty()
-                || Arrays.stream(pluginDefinition.targetServiceName().get().value())
+                || stream(pluginDefinition.targetServiceName().get().value())
                     .anyMatch(
                         targetServiceName ->
                             Ascii.equalsIgnoreCase(targetServiceName, serviceName)));
     boolean hasWebServiceMatch = pluginDefinition.isForWebService() && isWebService(networkService);
+    return hasServiceNameMatch || hasWebServiceMatch;
+  }
+
+  private static boolean hasMatchingServiceName(
+      NetworkService networkService, com.google.tsunami.proto.PluginDefinition pluginDefinition) {
+    String serviceName = networkService.getServiceName();
+    boolean hasServiceNameMatch =
+        pluginDefinition.hasTargetServiceName()
+            && (serviceName.isEmpty()
+                || pluginDefinition.getTargetServiceName().getValueList().stream()
+                    .anyMatch(
+                        targetServiceName ->
+                            Ascii.equalsIgnoreCase(targetServiceName, serviceName)));
+    boolean hasWebServiceMatch =
+        pluginDefinition.getForWebService() && isWebService(networkService);
     return hasServiceNameMatch || hasWebServiceMatch;
   }
 
@@ -155,11 +222,22 @@ public class PluginManager {
                 pluginDefinition.targetSoftware().get().name(), softwareName));
   }
 
+  private static boolean hasMatchingSoftware(
+      NetworkService networkService, com.google.tsunami.proto.PluginDefinition pluginDefinition) {
+    String softwareName = networkService.getSoftware().getName();
+    return pluginDefinition.hasTargetSoftware()
+        && (softwareName.isEmpty()
+            || Ascii.equalsIgnoreCase(
+                pluginDefinition.getTargetSoftware().getName(), softwareName));
+  }
+
   /** Matched {@link TsunamiPlugin}s based on certain criteria. */
   @AutoValue
   public abstract static class PluginMatchingResult<T extends TsunamiPlugin> {
     public abstract PluginDefinition pluginDefinition();
+
     public abstract T tsunamiPlugin();
+
     public abstract ImmutableList<NetworkService> matchedServices();
 
     public String pluginId() {
@@ -171,6 +249,7 @@ public class PluginManager {
     }
 
     /** Builder for {@link PluginMatchingResult}. */
+    @SuppressWarnings("CanIgnoreReturnValueSuggester")
     @AutoValue.Builder
     public abstract static class Builder<T extends TsunamiPlugin> {
       public abstract Builder<T> setPluginDefinition(PluginDefinition value);

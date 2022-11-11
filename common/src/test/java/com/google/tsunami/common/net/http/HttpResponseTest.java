@@ -17,9 +17,10 @@ package com.google.tsunami.common.net.http;
 
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth8.assertThat;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
-import com.google.gson.JsonSyntaxException;
 import com.google.protobuf.ByteString;
 import okhttp3.HttpUrl;
 import org.junit.Test;
@@ -67,7 +68,7 @@ public final class HttpResponseTest {
   }
 
   @Test
-  public void bodyJson_whenNonJsonResponseBody_throwsJsonSyntaxException() {
+  public void bodyJson_whenNonJsonResponseBody_returnsEmptyOptional() {
     HttpResponse httpResponse =
         HttpResponse.builder()
             .setStatus(HttpStatus.OK)
@@ -76,6 +77,71 @@ public final class HttpResponseTest {
             .setResponseUrl(TEST_URL)
             .build();
 
-    assertThrows(JsonSyntaxException.class, httpResponse::bodyJson);
+    assertThat(httpResponse.bodyJson()).isEmpty();
+  }
+
+  @Test
+  public void bodyJson_whenEmptyBodyResponseBody_throwsJsonSyntaxException() {
+    HttpResponse httpResponse =
+        HttpResponse.builder()
+            .setStatus(HttpStatus.OK)
+            .setHeaders(HttpHeaders.builder().build())
+            .setBodyBytes(ByteString.copyFromUtf8(""))
+            .setResponseUrl(TEST_URL)
+            .build();
+
+    assertThrows(
+        IllegalStateException.class, () -> httpResponse.jsonFieldEqualsToValue("field", "value"));
+  }
+
+  @Test
+  public void jsonFieldEqualsToValue_whenEmptyJsonResponseBody_returnsFalse() {
+    HttpResponse httpResponse =
+        HttpResponse.builder()
+            .setStatus(HttpStatus.OK)
+            .setHeaders(HttpHeaders.builder().build())
+            .setBodyBytes(ByteString.copyFromUtf8("{}"))
+            .setResponseUrl(TEST_URL)
+            .build();
+
+    assertFalse(httpResponse.jsonFieldEqualsToValue("field", "value"));
+  }
+
+  @Test
+  public void jsonFieldEqualsToValue_whenNonJsonResponseBody_returnsEmptyOptional() {
+    HttpResponse httpResponse =
+        HttpResponse.builder()
+            .setStatus(HttpStatus.OK)
+            .setHeaders(HttpHeaders.builder().build())
+            .setBodyBytes(ByteString.copyFromUtf8("not a json"))
+            .setResponseUrl(TEST_URL)
+            .build();
+
+    assertThat(httpResponse.bodyJson()).isEmpty();
+  }
+
+  @Test
+  public void jsonFieldEqualsToValue_whenJsonFieldContainsValue_returnsTrue() {
+    HttpResponse httpResponse =
+        HttpResponse.builder()
+            .setStatus(HttpStatus.OK)
+            .setHeaders(HttpHeaders.builder().build())
+            .setBodyBytes(ByteString.copyFromUtf8("{\"field\": \"value\"}"))
+            .setResponseUrl(TEST_URL)
+            .build();
+
+    assertTrue(httpResponse.jsonFieldEqualsToValue("field", "value"));
+  }
+
+  @Test
+  public void bodyJson_whenHttpStatusInvalid_parseSucceeds() {
+    HttpResponse httpResponse =
+        HttpResponse.builder()
+            .setStatus(HttpStatus.HTTP_STATUS_UNSPECIFIED)
+            .setHeaders(HttpHeaders.builder().build())
+            .setResponseUrl(TEST_URL)
+            .build();
+
+    assertFalse(httpResponse.status().isSuccess());
   }
 }

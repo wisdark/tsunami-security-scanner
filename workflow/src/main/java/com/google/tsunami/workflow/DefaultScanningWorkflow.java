@@ -32,6 +32,7 @@ import com.google.protobuf.util.Durations;
 import com.google.protobuf.util.Timestamps;
 import com.google.tsunami.common.TsunamiException;
 import com.google.tsunami.common.time.UtcClock;
+import com.google.tsunami.plugin.LanguageServerException;
 import com.google.tsunami.plugin.PluginExecutionException;
 import com.google.tsunami.plugin.PluginExecutionResult;
 import com.google.tsunami.plugin.PluginExecutor;
@@ -122,7 +123,7 @@ public final class DefaultScanningWorkflow {
   /**
    * Performs the scanning workflow asynchronously.
    *
-   * @param scanTarget the IP or hostname target to be scanned
+   * @param scanTarget the IP or hostname or uri target to be scanned
    * @return A {@link ListenableFuture} over the result of the scanning workflow.
    */
   public ListenableFuture<ScanResults> runAsync(ScanTarget scanTarget) {
@@ -130,8 +131,17 @@ public final class DefaultScanningWorkflow {
     scanStartTimestamp = Instant.now(clock);
     executionTracer = ExecutionTracer.startWorkflow();
     logger.atInfo().log("Staring Tsunami scanning workflow.");
-    return FluentFuture.from(scanPorts(scanTarget))
-        .transformAsync(this::fingerprintNetworkServices, directExecutor())
+    FluentFuture<ReconnaissanceReport> reconnaissanceReport;
+
+    if (scanTarget.hasNetworkService()) {
+      PortScanningReport portScanningReport = buildUriPortScanningReport(scanTarget);
+      reconnaissanceReport = FluentFuture.from(fingerprintNetworkServices(portScanningReport));
+    } else {
+      reconnaissanceReport =
+          FluentFuture.from(scanPorts(scanTarget))
+              .transformAsync(this::fingerprintNetworkServices, directExecutor());
+    }
+    return reconnaissanceReport
         .transformAsync(this::detectVulnerabilities, directExecutor())
         // Unfortunately FluentFuture doesn't support future peeking.
         .transform(
@@ -142,7 +152,22 @@ public final class DefaultScanningWorkflow {
             directExecutor())
         // Execution errors are handled and reported back in the ScanResults.
         .catching(PluginExecutionException.class, this::onExecutionError, directExecutor())
+        .catching(LanguageServerException.class, this::onExecutionError, directExecutor())
         .catching(ScanningWorkflowException.class, this::onExecutionError, directExecutor());
+  }
+
+  private PortScanningReport buildUriPortScanningReport(ScanTarget scanTarget) {
+
+    Optional<PluginMatchingResult<PortScanner>> matchedPortScanner = pluginManager.getPortScanner();
+    executionTracer.startPortScanning(ImmutableList.of(matchedPortScanner.get()));
+
+    NetworkService networkService = scanTarget.getNetworkService();
+
+    return PortScanningReport.newBuilder()
+        .setTargetInfo(
+            TargetInfo.newBuilder().addNetworkEndpoints(networkService.getNetworkEndpoint()))
+        .addNetworkServices(networkService)
+        .build();
   }
 
   private ScanResults onExecutionError(TsunamiException exception) {

@@ -24,9 +24,7 @@ import com.google.inject.Guice;
 import com.google.protobuf.ByteString;
 import com.google.tsunami.common.net.http.HttpClientModule;
 import com.google.tsunami.plugin.payload.testing.FakePayloadGeneratorModule;
-import com.google.tsunami.plugin.payload.testing.PayloadTestHelper;
 import com.google.tsunami.proto.PayloadGeneratorConfig;
-import java.io.IOException;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import javax.inject.Inject;
@@ -36,9 +34,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/** Tests for {@link PayloadGenerator}. */
+/** Tests for {@link PayloadGenerator} for cases which do not utilize the callback server. */
 @RunWith(JUnit4.class)
-public final class PayloadGeneratorTest {
+public final class PayloadGeneratorWithoutCallbackServerTest {
 
   @Inject private PayloadGenerator payloadGenerator;
 
@@ -70,110 +68,43 @@ public final class PayloadGeneratorTest {
           .setVulnerabilityType(PayloadGeneratorConfig.VulnerabilityType.SSRF)
           .setInterpretationEnvironment(
               PayloadGeneratorConfig.InterpretationEnvironment.INTERPRETATION_ANY)
-          .setExecutionEnvironment(PayloadGeneratorConfig.ExecutionEnvironment.EXEC_ANY).build();
+          .setExecutionEnvironment(PayloadGeneratorConfig.ExecutionEnvironment.EXEC_ANY)
+          .build();
   private static final String CORRECT_PRINTF =
       "printf %s%s%s TSUNAMI_PAYLOAD_START ffffffffffffffff TSUNAMI_PAYLOAD_END";
 
   @Before
-  public void setUp() throws IOException {
-    mockCallbackServer = new MockWebServer();
-    mockCallbackServer.start();
-    Guice.createInjector(
-            new HttpClientModule.Builder().build(),
-            FakePayloadGeneratorModule.builder()
-                .setCallbackServer(mockCallbackServer)
-                .setSecureRng(testSecureRandom)
-                .build())
-        .injectMembers(this);
-  }
-
-  @Test
-  public void isCallbackServerEnabled_withConfiguredCallbackServer_returnsTrue() {
-    assertTrue(payloadGenerator.isCallbackServerEnabled());
-  }
-
-  @Test
-  public void isCallbackServerEnabled_withUnconfiguredCallbackServer_returnsFalse() {
-    // Replace PayloadGenerator with a version without a configured callback server
+  public void setUp() {
     Guice.createInjector(
             new HttpClientModule.Builder().build(),
             FakePayloadGeneratorModule.builder().setSecureRng(testSecureRandom).build())
         .injectMembers(this);
+  }
 
+  @Test
+  public void isCallbackServerEnabled_returnsFalse() {
     assertFalse(payloadGenerator.isCallbackServerEnabled());
   }
 
   @Test
-  public void generate_withLinuxConfiguration_andCallbackServer_returnsCurlPayload() {
-    Payload payload =
-        payloadGenerator.generate(
-            LINUX_REFLECTIVE_RCE_CONFIG.toBuilder().setUseCallbackServer(true).build());
+  public void getNonCallbackPayload_withLinuxConfiguration_returnsPrintfPayload() {
+    Payload payload = payloadGenerator.generateNoCallback(LINUX_REFLECTIVE_RCE_CONFIG);
 
-    assertThat(payload.getPayload()).contains("curl");
-    assertThat(payload.getPayload()).contains(mockCallbackServer.getHostName());
-    assertThat(payload.getPayload()).contains(Integer.toString(mockCallbackServer.getPort(), 10));
-    assertTrue(payload.getPayloadAttributes().getUsesCallbackServer());
-  }
-
-  @Test
-  public void
-      checkIfExecuted_withLinuxConfiguration_andCallbackServer_andExecutedCallbackUrl_returnsTrue()
-          throws IOException {
-
-    mockCallbackServer.enqueue(PayloadTestHelper.generateMockSuccessfulCallbackResponse());
-    Payload payload =
-        payloadGenerator.generate(
-            LINUX_REFLECTIVE_RCE_CONFIG.toBuilder().setUseCallbackServer(true).build());
-
-    assertTrue(payload.checkIfExecuted());
-  }
-
-  @Test
-  public void
-      checkIfExecuted_withLinuxConfiguration_andCallbackServer_andNotExecutedCallbackUrl_returnsFalse() {
-
-    mockCallbackServer.enqueue(PayloadTestHelper.generateMockUnsuccessfulCallbackResponse());
-    Payload payload =
-        payloadGenerator.generate(
-            LINUX_REFLECTIVE_RCE_CONFIG.toBuilder().setUseCallbackServer(true).build());
-
-    assertFalse(payload.checkIfExecuted());
-  }
-
-  @Test
-  public void getPayload_withLinuxConfiguration_andNoCallbackServer_returnsPrintfPayload() {
-    Payload payload =
-        payloadGenerator.generate(
-            LINUX_REFLECTIVE_RCE_CONFIG.toBuilder().setUseCallbackServer(false).build());
-
-    assertThat(payload.getPayload()).contains(CORRECT_PRINTF);
+    assertThat(payload.getPayload()).isEqualTo(CORRECT_PRINTF);
     assertFalse(payload.getPayloadAttributes().getUsesCallbackServer());
   }
 
   @Test
-  public void
-      getPayload_withLinuxConfiguration_andUnconfiguredCallbackServer_returnsPrintfPayload() {
+  public void getPayload_withLinuxConfiguration_returnsPrintfPayload() {
+    Payload payload = payloadGenerator.generate(LINUX_REFLECTIVE_RCE_CONFIG);
 
-    // Replace PayloadGenerator with a version without a configured callback server
-    Guice.createInjector(
-            new HttpClientModule.Builder().build(),
-            FakePayloadGeneratorModule.builder().setSecureRng(testSecureRandom).build())
-        .injectMembers(this);
-
-    Payload payload =
-        payloadGenerator.generate(
-            LINUX_REFLECTIVE_RCE_CONFIG.toBuilder().setUseCallbackServer(true).build());
-
-    assertThat(payload.getPayload()).contains(CORRECT_PRINTF);
+    assertThat(payload.getPayload()).isEqualTo(CORRECT_PRINTF);
     assertFalse(payload.getPayloadAttributes().getUsesCallbackServer());
   }
 
   @Test
-  public void
-      checkIfExecuted_withLinuxConfiguration_andNoCallbackServer_andCorrectInput_returnsTrue() {
-    Payload payload =
-        payloadGenerator.generate(
-            LINUX_REFLECTIVE_RCE_CONFIG.toBuilder().setUseCallbackServer(false).build());
+  public void checkIfExecuted_withLinuxConfiguration_andCorrectInput_returnsTrue() {
+    Payload payload = payloadGenerator.generate(LINUX_REFLECTIVE_RCE_CONFIG);
 
     assertTrue(
         payload.checkIfExecuted(
@@ -182,29 +113,24 @@ public final class PayloadGeneratorTest {
   }
 
   @Test
-  public void
-      checkIfExecuted_withLinuxConfiguration_andNoCallbackServer_andIncorectInput_returnsFalse() {
-    Payload payload =
-        payloadGenerator.generate(
-            LINUX_REFLECTIVE_RCE_CONFIG.toBuilder().setUseCallbackServer(false).build());
+  public void checkIfExecuted_withLinuxConfiguration_andIncorectInput_returnsFalse() {
+    Payload payload = payloadGenerator.generate(LINUX_REFLECTIVE_RCE_CONFIG);
 
     assertFalse(payload.checkIfExecuted(ByteString.copyFromUtf8(CORRECT_PRINTF)));
   }
 
   @Test
-  public void getPayload_withJavaConfiguration_andNoCallbackServer_returnsPrintfPayload() {
+  public void getPayload_withJavaConfiguration_returnsPrintfPayload() {
     Payload payload = payloadGenerator.generate(JAVA_REFLECTIVE_RCE_CONFIG);
 
-    assertThat(payload.getPayload())
-        .contains(
+    assertThat(payload.getPayload()).isEqualTo(
             "String.format(\"%s%s%s\", \"TSUNAMI_PAYLOAD_START\", \"ffffffffffffffff\","
                 + " \"TSUNAMI_PAYLOAD_END\")");
     assertFalse(payload.getPayloadAttributes().getUsesCallbackServer());
   }
 
   @Test
-  public void
-      checkIfExecuted_withJavaConfiguration_andNoCallbackServer_andCorrectInput_returnsTrue() {
+  public void checkIfExecuted_withJavaConfiguration_andCorrectInput_returnsTrue() {
     Payload payload = payloadGenerator.generate(JAVA_REFLECTIVE_RCE_CONFIG);
 
     assertTrue(
@@ -214,8 +140,7 @@ public final class PayloadGeneratorTest {
   }
 
   @Test
-  public void
-      checkIfExecuted_withJavaConfiguration_andNoCallbackServer_andIncorrectInput_returnsFalse() {
+  public void checkIfExecuted_withJavaConfiguration_andIncorrectInput_returnsFalse() {
     Payload payload = payloadGenerator.generate(JAVA_REFLECTIVE_RCE_CONFIG);
 
     assertFalse(
@@ -224,47 +149,23 @@ public final class PayloadGeneratorTest {
   }
 
   @Test
-  public void getPayload_withSsrfConfiguration_andCallbackServer_returnsCallbackUrl() {
-    Payload payload = payloadGenerator.generate(ANY_SSRF_CONFIG.toBuilder().setUseCallbackServer(true).build());
+  public void getPayload_withSsrfConfiguration_returnsGooglePayload() {
+    Payload payload = payloadGenerator.generate(ANY_SSRF_CONFIG);
 
-    assertTrue(payload.getPayloadAttributes().getUsesCallbackServer());
-    assertThat(payload.getPayload()).contains(mockCallbackServer.getHostName());
-    assertThat(payload.getPayload()).contains(Integer.toString(mockCallbackServer.getPort(), 10));
+    assertThat(payload.getPayload()).isEqualTo("http://google.com/page-does-not-exist");
+    assertFalse(payload.getPayloadAttributes().getUsesCallbackServer());
   }
 
   @Test
-  public void checkIfExecuted_withSsrfConfiguration_andCallbackServer_andExecutedUrl_returnsTrue()
-      throws IOException {
-    mockCallbackServer.enqueue(PayloadTestHelper.generateMockSuccessfulCallbackResponse());
-    Payload payload =
-        payloadGenerator.generate(ANY_SSRF_CONFIG.toBuilder().setUseCallbackServer(true).build());
-
-    assertTrue(payload.checkIfExecuted());
-  }
-
-  @Test
-  public void getPayload_withSsrfConfiguration_andCallbackServer_andNotExecutedUrl_returnsFalse() {
-    mockCallbackServer.enqueue(PayloadTestHelper.generateMockUnsuccessfulCallbackResponse());
-    Payload payload =
-        payloadGenerator.generate(ANY_SSRF_CONFIG.toBuilder().setUseCallbackServer(true).build());
-
-    assertFalse(payload.checkIfExecuted());
-  }
-
-  @Test
-  public void
-      checkIfExecuted_withSsrfConfiguration_andNoCallbackServer_andCorrectInput_returnsTrue() {
-    Payload payload =
-        payloadGenerator.generate(ANY_SSRF_CONFIG.toBuilder().setUseCallbackServer(false).build());
+  public void checkIfExecuted_withSsrfConfiguration_andCorrectInput_returnsTrue() {
+    Payload payload = payloadGenerator.generate(ANY_SSRF_CONFIG);
 
     assertTrue(payload.checkIfExecuted("<title>Error 404 (Not Found)!!1</title>"));
   }
 
   @Test
-  public void
-      checkIfExecuted_withSsrfConfiguration_andNoCallbackServer_andIncorrectInput_returnsFalse() {
-    Payload payload =
-        payloadGenerator.generate(ANY_SSRF_CONFIG.toBuilder().setUseCallbackServer(false).build());
+  public void checkIfExecuted_withSsrfConfiguration_andIncorrectInput_returnsFalse() {
+    Payload payload = payloadGenerator.generate(ANY_SSRF_CONFIG);
 
     assertFalse(payload.checkIfExecuted("404 not found"));
   }

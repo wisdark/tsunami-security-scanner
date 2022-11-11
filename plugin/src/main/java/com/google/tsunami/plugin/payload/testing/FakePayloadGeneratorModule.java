@@ -28,10 +28,10 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 /**
  * Guice module for interacting with {@link PayloadGenerator} in tests. Use {@link
- * FakePayloadGeneratorModuleBuilder} instead of this directly.
+ * FakePayloadGeneratorModule.Builder} instead of this directly.
  */
 public final class FakePayloadGeneratorModule extends AbstractModule {
-  private final TcsConfigProperties config = new TcsConfigProperties();
+  private final TcsConfigProperties tcsConfig = new TcsConfigProperties();
   private final SecureRandom secureRng;
 
   /**
@@ -43,19 +43,23 @@ public final class FakePayloadGeneratorModule extends AbstractModule {
   FakePayloadGeneratorModule(
       Optional<MockWebServer> callbackServer, Optional<SecureRandom> secureRng) {
 
-    this.config.callbackAddress = callbackServer.map(c -> c.getHostName()).orElse(null);
-    this.config.callbackPort = callbackServer.map(c -> c.getPort()).orElse(null);
-    this.config.pollingUri = callbackServer.map(c -> c.url("/").toString()).orElse(null);
+    this.tcsConfig.callbackAddress = callbackServer.map(c -> c.getHostName()).orElse(null);
+    this.tcsConfig.callbackPort = callbackServer.map(c -> c.getPort()).orElse(null);
+    this.tcsConfig.pollingUri = callbackServer.map(c -> c.url("/").toString()).orElse(null);
     this.secureRng = secureRng.orElse(new SecureRandom());
   }
 
   @Override
   protected void configure() {
-    install(new PayloadGeneratorModule(this.secureRng));
-    bind(TcsConfigProperties.class).toInstance(this.config);
+    install(new PayloadGeneratorModule(secureRng));
+    bind(TcsConfigProperties.class).toInstance(tcsConfig);
   }
 
-  /** Returns a builder for configuring the module */
+  /**
+   * Creates a builder for the {@link FakePayloadGeneratorModule}.
+   *
+   * @return a builder for configuring the module
+   */
   public static Builder builder() {
     return Builder.builder();
   }
