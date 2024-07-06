@@ -16,7 +16,6 @@
 package com.google.tsunami.workflow;
 
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.common.truth.Truth8.assertThat;
 import static com.google.tsunami.common.data.NetworkEndpointUtils.forIp;
 import static com.google.tsunami.common.data.NetworkServiceUtils.buildUriNetworkService;
 import static org.junit.Assert.assertThrows;

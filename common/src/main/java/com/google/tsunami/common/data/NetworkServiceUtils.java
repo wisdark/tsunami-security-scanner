@@ -54,6 +54,8 @@ public final class NetworkServiceUtils {
           .put("ssl/http", false)
           .put("ssl/https", false)
           .put("ssl/http-proxy", false)
+          .put("ssl/tungsten-https", false) // Port 9443, WSO2 Identity Server & WSO2 API Manager.
+          .put("ssl/wso2esb-console", false) // Port 9444, WSO2 Identity Server Analytics.
           .build();
 
   private NetworkServiceUtils() {}
@@ -66,19 +68,43 @@ public final class NetworkServiceUtils {
 
   public static boolean isWebService(NetworkService networkService) {
     checkNotNull(networkService);
-    return isWebService(Optional.of(networkService.getServiceName()));
+    // A web-service is a service that is either flagged as http by nmap or one that supports at
+    // least one HTTP method.
+    return (networkService.getSupportedHttpMethodsCount() > 0)
+        || isWebService(Optional.of(networkService.getServiceName()));
   }
 
   public static boolean isPlainHttp(NetworkService networkService) {
     checkNotNull(networkService);
-    return isWebService(networkService)
-        && IS_PLAIN_HTTP_BY_KNOWN_WEB_SERVICE_NAME.getOrDefault(
+
+    var isWebService = isWebService(networkService);
+    var isKnownServiceName = IS_PLAIN_HTTP_BY_KNOWN_WEB_SERVICE_NAME.containsKey(
+            Ascii.toLowerCase(networkService.getServiceName()));
+    var doesNotSupportAnySslVersion = networkService.getSupportedSslVersionsCount() == 0;
+
+    if (!isKnownServiceName) {
+      return isWebService && doesNotSupportAnySslVersion;
+    }
+
+    var isKnownPlainHttpService =
+        IS_PLAIN_HTTP_BY_KNOWN_WEB_SERVICE_NAME.getOrDefault(
             Ascii.toLowerCase(networkService.getServiceName()), false);
+
+    return isKnownPlainHttpService && doesNotSupportAnySslVersion;
   }
 
   public static String getServiceName(NetworkService networkService) {
     if (isWebService(networkService) && networkService.hasSoftware()) {
       return Ascii.toLowerCase(networkService.getSoftware().getName());
+    }
+    return Ascii.toLowerCase(networkService.getServiceName());
+  }
+
+  public static String getWebServiceName(NetworkService networkService) {
+    if (isWebService(networkService)
+        && networkService.getServiceContext().getWebServiceContext().hasSoftware()) {
+      return Ascii.toLowerCase(
+          networkService.getServiceContext().getWebServiceContext().getSoftware().getName());
     }
     return Ascii.toLowerCase(networkService.getServiceName());
   }

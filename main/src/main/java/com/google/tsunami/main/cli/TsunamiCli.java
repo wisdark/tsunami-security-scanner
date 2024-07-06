@@ -21,8 +21,10 @@ import static com.google.tsunami.common.data.NetworkEndpointUtils.forIp;
 import static com.google.tsunami.common.data.NetworkEndpointUtils.forIpAndHostname;
 import static com.google.tsunami.common.data.NetworkServiceUtils.buildUriNetworkService;
 
+import com.beust.jcommander.ParameterException;
 import com.google.common.base.Splitter;
 import com.google.common.base.Stopwatch;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
@@ -39,7 +41,7 @@ import com.google.tsunami.common.config.YamlConfigLoader;
 import com.google.tsunami.common.io.archiving.GoogleCloudStorageArchiverModule;
 import com.google.tsunami.common.net.http.HttpClientModule;
 import com.google.tsunami.common.reflection.ClassGraphModule;
-import com.google.tsunami.common.server.ServerPortCommand;
+import com.google.tsunami.common.server.LanguageServerCommand;
 import com.google.tsunami.common.time.SystemUtcClockModule;
 import com.google.tsunami.main.cli.option.MainCliOptions;
 import com.google.tsunami.main.cli.server.RemoteServerLoader;
@@ -56,10 +58,14 @@ import com.google.tsunami.workflow.ScanningWorkflowException;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ScanResult;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 
 /** Command line interface for the Tsunami Security Scanner. */
@@ -154,7 +160,8 @@ public final class TsunamiCli {
       String logId = extractLogId(args);
 
       // TODO(b/241964583): Only use LanguageServerOptions to extract language server args.
-      ImmutableList<ServerPortCommand> commands = extractPluginServerArgs(args);
+      ImmutableList<LanguageServerCommand> commands =
+          extractPluginServerArgs(args, logId, tsunamiConfig);
 
       install(new ClassGraphModule(classScanResult));
       install(new ConfigModule(classScanResult, tsunamiConfig));
@@ -170,35 +177,155 @@ public final class TsunamiCli {
       install(new RemoteServerLoaderModule(commands));
       install(new RemoteVulnDetectorLoadingModule(commands));
     }
-
-    private ImmutableList<ServerPortCommand> extractPluginServerArgs(String[] args) {
-      var paths = extractPluginServerPaths(args);
-      var ports = extractPluginServerPorts(args);
-      if (paths.size() == ports.size()) {
-        List<ServerPortCommand> commands = Lists.newArrayList();
+    
+    private ImmutableList<LanguageServerCommand> extractPluginServerArgs(
+        String[] args, String logId, TsunamiConfig tsunamiConfig) {
+      List<LanguageServerCommand> commands = Lists.newArrayList();
+      Boolean trustAllSslCertCli = extractCliTrustAllSslCert(args);
+      var paths = extractCliPluginServerArgs(args, "--plugin-server-paths=");
+      var ports = extractCliPluginServerArgs(args, "--plugin-server-ports=");
+      var pythonServerAddress = extractPythonPluginServerAddress(args);
+      var pythonServerPort = extractPythonPluginServerPort(args);
+      if (paths.size() != ports.size()) {
+        throw new ParameterException(
+            String.format(
+                "Number of plugin server paths must be equal to number of plugin server ports."
+                    + " Paths: %s. Ports: %s.",
+                paths.size(), ports.size()));
+      }
+      if (paths.isEmpty() && Strings.isNullOrEmpty(pythonServerAddress)) {
+        return ImmutableList.of();
+      }
+      if (tsunamiConfig.getRawConfigData().isEmpty()) {
         for (int i = 0; i < paths.size(); ++i) {
-          commands.add(ServerPortCommand.create(paths.get(i), ports.get(i)));
+          commands.add(
+              LanguageServerCommand.create(
+                  paths.get(i),
+                  "",
+                  ports.get(i),
+                  logId,
+                  extractOutputDir(args),
+                  trustAllSslCertCli != null && trustAllSslCertCli.booleanValue(),
+                  Duration.ZERO,
+                  "",
+                  0,
+                  ""));
+        }
+        if (!Strings.isNullOrEmpty(pythonServerAddress)) {
+          commands.add(
+              LanguageServerCommand.create(
+                  "",
+                  pythonServerAddress,
+                  pythonServerPort,
+                  logId,
+                  extractOutputDir(args),
+                  trustAllSslCertCli != null && trustAllSslCertCli.booleanValue(),
+                  Duration.ZERO,
+                  "",
+                  0,
+                  ""));
+        }
+        return ImmutableList.copyOf(commands);
+      } else {
+        Object callbackConfig =
+            ((Map) tsunamiConfig.getRawConfigData().get("plugin")).get("callbackserver");
+        Object httpClientConfig =
+            ((Map) ((Map) tsunamiConfig.getRawConfigData().get("common")).get("net")).get("http");
+        boolean trustAllSslCertConfig =
+            (boolean) ((Map) httpClientConfig).get("trust_all_certificates");
+        for (int i = 0; i < paths.size(); ++i) {
+          commands.add(
+              LanguageServerCommand.create(
+                  paths.get(i),
+                  "",
+                  ports.get(i),
+                  logId,
+                  extractOutputDir(args),
+                  trustAllSslCertCli == null
+                      ? trustAllSslCertConfig
+                      : trustAllSslCertCli.booleanValue(),
+                  Duration.ofSeconds((int) ((Map) httpClientConfig).get("connect_timeout_seconds")),
+                  (String) ((Map) callbackConfig).get("callback_address"),
+                  (Integer) ((Map) callbackConfig).get("callback_port"),
+                  (String) ((Map) callbackConfig).get("polling_uri")));
+        }
+        if (!Strings.isNullOrEmpty(pythonServerAddress)) {
+          commands.add(
+              LanguageServerCommand.create(
+                  "",
+                  pythonServerAddress,
+                  pythonServerPort,
+                  logId,
+                  extractOutputDir(args),
+                  trustAllSslCertCli == null
+                      ? trustAllSslCertConfig
+                      : trustAllSslCertCli.booleanValue(),
+                  Duration.ofSeconds((int) ((Map) httpClientConfig).get("connect_timeout_seconds")),
+                  (String) ((Map) callbackConfig).get("callback_address"),
+                  (Integer) ((Map) callbackConfig).get("callback_port"),
+                  (String) ((Map) callbackConfig).get("polling_uri")));
         }
         return ImmutableList.copyOf(commands);
       }
-      return ImmutableList.of();
     }
 
-    private ImmutableList<String> extractPluginServerPaths(String[] args) {
-      for (int i = 0; i < args.length; ++i) {
-        if (args[i].startsWith("--plugin-server-paths=")) {
-          var paths = Iterables.get(Splitter.on('=').split(args[i]), 1);
-          return ImmutableList.copyOf(Splitter.on(',').split(paths));
+    @Nullable
+    private Boolean extractCliTrustAllSslCert(String[] args) {
+      for (String arg : args) {
+        if (arg.startsWith("--http-client-trust-all-certificates")) {
+          if (arg.contains("=")) {
+            return Boolean.valueOf(Iterables.get(Splitter.on('=').split(arg), 1));
+          } else {
+            return true;
+          }
         }
       }
-      return ImmutableList.of();
+      return null;
     }
 
-    private ImmutableList<String> extractPluginServerPorts(String[] args) {
-      for (int i = 0; i < args.length; ++i) {
-        if (args[i].startsWith("--plugin-server-ports=")) {
-          var ports = Iterables.get(Splitter.on('=').split(args[i]), 1);
-          return ImmutableList.copyOf(Splitter.on(',').split(ports));
+    @Nullable
+    private String extractPythonPluginServerAddress(String[] args) {
+      for (String arg : args) {
+        if (arg.startsWith("--python-plugin-server-address")) {
+          if (arg.contains("=")) {
+            return Iterables.get(Splitter.on('=').split(arg), 1);
+          } else {
+            return null;
+          }
+        }
+      }
+      return null;
+    }
+
+    @Nullable
+    private String extractPythonPluginServerPort(String[] args) {
+      for (String arg : args) {
+        if (arg.startsWith("--python-plugin-server-port")) {
+          if (arg.contains("=")) {
+            return Iterables.get(Splitter.on('=').split(arg), 1);
+          } else {
+            return null;
+          }
+        }
+      }
+      return null;
+    }
+
+    private String extractOutputDir(String[] args) {
+      for (String arg : args) {
+        if (arg.startsWith("--scan-results-local-output-filename=")) {
+          String filename = Iterables.get(Splitter.on('=').split(arg), 1) + ": ";
+          return Path.of(filename).getParent().toString();
+        }
+      }
+      return "";
+    }
+
+    private ImmutableList<String> extractCliPluginServerArgs(String[] args, String flag) {
+      for (String arg : args) {
+        if (arg.startsWith(flag)) {
+          var count = Iterables.get(Splitter.on('=').split(arg), 1);
+          return ImmutableList.copyOf(Splitter.on(',').split(count));
         }
       }
       return ImmutableList.of();
@@ -206,9 +333,9 @@ public final class TsunamiCli {
 
     private String extractLogId(String[] args) {
       // TODO(b/171405612): Use the Flag class instead of manual parsing.
-      for (int i = 0; i < args.length; ++i) {
-        if (args[i].startsWith("--log-id=")) {
-          return Iterables.get(Splitter.on('=').split(args[i]), 1) + ": ";
+      for (String arg : args) {
+        if (arg.startsWith("--log-id=")) {
+          return Iterables.get(Splitter.on('=').split(arg), 1) + ": ";
         }
       }
       return "";

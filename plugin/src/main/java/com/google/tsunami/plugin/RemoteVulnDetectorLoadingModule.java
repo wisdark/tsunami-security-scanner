@@ -18,13 +18,15 @@ package com.google.tsunami.plugin;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 
+import com.google.api.client.util.ExponentialBackOff;
 import com.google.auto.value.AutoAnnotation;
 import com.google.auto.value.AutoBuilder;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.AbstractModule;
 import com.google.inject.multibindings.MapBinder;
-import com.google.tsunami.common.server.ServerPortCommand;
+import com.google.tsunami.common.server.LanguageServerCommand;
 import com.google.tsunami.plugin.annotations.PluginInfo;
 import io.grpc.Channel;
 import io.grpc.netty.NegotiationType;
@@ -34,10 +36,26 @@ import io.grpc.netty.NettyChannelBuilder;
 public final class RemoteVulnDetectorLoadingModule extends AbstractModule {
   private static final int MAX_MESSAGE_SIZE =
       10 * 1000 * 1000; // Max incoming gRPC message size 10MB.
+  private static final int INITIAL_WAIT_TIME_MS = 200;
+  private static final int MAX_WAIT_TIME_MS = 30000;
+  private static final int WAIT_TIME_MULTIPLIER = 5;
+  private static final int MAX_ATTEMPTS = 5;
+  // Exponential delay attempts (>125 seconds before taking randomization factor into account):
+  // ~200ms
+  // ~1000ms
+  // ~5000ms
+  // ~25000ms
+  // ~1250000ms
+  private static final ExponentialBackOff BACKOFF =
+      new ExponentialBackOff.Builder()
+          .setInitialIntervalMillis(INITIAL_WAIT_TIME_MS)
+          .setRandomizationFactor(0.1)
+          .setMultiplier(WAIT_TIME_MULTIPLIER)
+          .setMaxElapsedTimeMillis(MAX_WAIT_TIME_MS)
+          .build();
+  private final ImmutableList<LanguageServerCommand> availableServerPorts;
 
-  private final ImmutableList<ServerPortCommand> availableServerPorts;
-
-  public RemoteVulnDetectorLoadingModule(ImmutableList<ServerPortCommand> serverPorts) {
+  public RemoteVulnDetectorLoadingModule(ImmutableList<LanguageServerCommand> serverPorts) {
     this.availableServerPorts = checkNotNull(serverPorts);
   }
 
@@ -50,18 +68,28 @@ public final class RemoteVulnDetectorLoadingModule extends AbstractModule {
         channel ->
             tsunamiPluginBinder
                 .addBinding(getRemoteVulnDetectorPluginDefinition(channel.hashCode()))
-                .toInstance(new RemoteVulnDetectorImpl(channel)));
+                .toInstance(new RemoteVulnDetectorImpl(channel, BACKOFF, MAX_ATTEMPTS)));
   }
 
   private ImmutableList<Channel> getLanguageServerChannels(
-      ImmutableList<ServerPortCommand> commands) {
+      ImmutableList<LanguageServerCommand> commands) {
     return commands.stream()
         .map(
-            command ->
-                NettyChannelBuilder.forTarget("localhost:" + command.port())
+            command -> {
+              if (Strings.isNullOrEmpty(command.serverCommand())) {
+                return NettyChannelBuilder.forTarget(
+                        String.format("%s:%s", command.serverAddress(), command.port()))
                     .negotiationType(NegotiationType.PLAINTEXT)
                     .maxInboundMessageSize(MAX_MESSAGE_SIZE)
-                    .build())
+                    .build();
+              } else {
+                // TODO(b/289462738): Support IPv6 loopback (::1) interface
+                return NettyChannelBuilder.forTarget("127.0.0.1:" + command.port())
+                    .negotiationType(NegotiationType.PLAINTEXT)
+                    .maxInboundMessageSize(MAX_MESSAGE_SIZE)
+                    .build();
+              }
+            })
         .collect(toImmutableList());
   }
 

@@ -21,8 +21,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.Guice;
 import com.google.inject.Key;
 import com.google.inject.util.Types;
-import com.google.tsunami.common.server.ServerPortCommand;
+import com.google.tsunami.common.server.LanguageServerCommand;
 import io.grpc.inprocess.InProcessServerBuilder;
+import java.time.Duration;
 import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -51,13 +52,47 @@ public final class RemoteVulnDetectorLoadingModuleTest {
 
   @Test
   public void configure_always_loadsAllRemotePlugins() {
-    var path0 = ServerPortCommand.create(generateServerName(), "34567");
-    var path1 = ServerPortCommand.create(generateServerName(), "34566");
+    var path0 =
+        LanguageServerCommand.create(
+            generateServerName(),
+            "",
+            "34567",
+            "193",
+            "/output/here",
+            false,
+            Duration.ofSeconds(10),
+            "157.34.0.2",
+            8080,
+            "157.34.0.2:8881");
+    var path1 =
+        LanguageServerCommand.create(
+            generateServerName(),
+            "",
+            "34566",
+            "193",
+            "/output/now",
+            false,
+            Duration.ofSeconds(10),
+            "157.34.0.2",
+            8080,
+            "157.34.0.2:8881");
+    var server0 =
+        LanguageServerCommand.create(
+            "",
+            "127.0.0.1",
+            "34567",
+            "193",
+            "/output/here",
+            false,
+            Duration.ofSeconds(10),
+            "157.34.0.2",
+            8080,
+            "157.34.0.2:8881");
     Map<PluginDefinition, TsunamiPlugin> remotePlugins =
         Guice.createInjector(
-                new RemoteVulnDetectorLoadingModule(ImmutableList.of(path0, path1)))
+                new RemoteVulnDetectorLoadingModule(ImmutableList.of(path0, path1, server0)))
             .getInstance(PLUGIN_BINDING_KEY);
 
-    assertThat(remotePlugins).hasSize(2);
+    assertThat(remotePlugins).hasSize(3);
   }
 }

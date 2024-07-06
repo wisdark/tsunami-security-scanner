@@ -18,6 +18,7 @@ package com.google.tsunami.plugin;
 import static com.google.common.truth.extensions.proto.ProtoTruth.assertThat;
 import static org.junit.Assert.assertThrows;
 
+import com.google.api.client.util.ExponentialBackOff;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.AbstractModule;
 import com.google.inject.Guice;
@@ -56,6 +57,17 @@ public final class RemoteVulnDetectorImplTest {
   private static final String PLUGIN_VERSION = "0.0.1";
   private static final String PLUGIN_DESCRIPTION = "test description";
   private static final String PLUGIN_AUTHOR = "tester";
+  private static final int INITIAL_WAIT_TIME_MS = 20;
+  private static final int MAX_WAIT_TIME_MS = 30000;
+  private static final int WAIT_TIME_MULTIPLIER = 3;
+  private static final int MAX_ATTEMPTS = 3;
+  private static final ExponentialBackOff BACKOFF =
+      new ExponentialBackOff.Builder()
+          .setInitialIntervalMillis(INITIAL_WAIT_TIME_MS)
+          .setRandomizationFactor(0.1)
+          .setMultiplier(WAIT_TIME_MULTIPLIER)
+          .setMaxElapsedTimeMillis(MAX_WAIT_TIME_MS)
+          .build();
 
   private final MutableHandlerRegistry serviceRegistry = new MutableHandlerRegistry();
 
@@ -84,7 +96,7 @@ public final class RemoteVulnDetectorImplTest {
   public void detect_withServingServer_returnsSuccessfulDetectionReportList() throws Exception {
     registerHealthCheckWithStatus(ServingStatus.SERVING);
     registerSuccessfulRunService();
-
+  
     RemoteVulnDetector pluginToTest = getNewRemoteVulnDetectorInstance();
     var endpointToTest = NetworkEndpointUtils.forIpAndPort("1.1.1.1", 80);
     var serviceToTest =
@@ -93,7 +105,7 @@ public final class RemoteVulnDetectorImplTest {
             .setTransportProtocol(TransportProtocol.TCP)
             .setServiceName("http")
             .build();
-
+  
     TargetInfo testTarget = TargetInfo.newBuilder().addNetworkEndpoints(endpointToTest).build();
     pluginToTest.addMatchedPluginToDetect(
         MatchedPlugin.newBuilder()
@@ -112,7 +124,7 @@ public final class RemoteVulnDetectorImplTest {
   @Test
   public void detect_withNonServingServer_returnsEmptyDetectionReportList() throws Exception {
     registerHealthCheckWithStatus(ServingStatus.NOT_SERVING);
-
+  
     RemoteVulnDetector pluginToTest = getNewRemoteVulnDetectorInstance();
     var endpointToTest = NetworkEndpointUtils.forIpAndPort("1.1.1.1", 80);
     var serviceToTest =
@@ -121,7 +133,7 @@ public final class RemoteVulnDetectorImplTest {
             .setTransportProtocol(TransportProtocol.TCP)
             .setServiceName("http")
             .build();
-
+  
     TargetInfo testTarget = TargetInfo.newBuilder().addNetworkEndpoints(endpointToTest).build();
     pluginToTest.addMatchedPluginToDetect(
         MatchedPlugin.newBuilder()
@@ -132,7 +144,7 @@ public final class RemoteVulnDetectorImplTest {
         .isEmpty();
   }
 
-  @Test
+  @Test(timeout = 30000L)
   public void detect_withRpcError_throwsLanguageServerException() throws Exception {
     registerHealthCheckWithError();
 
@@ -146,7 +158,7 @@ public final class RemoteVulnDetectorImplTest {
   @Test
   public void getAllPlugins_withServingServer_returnsSuccessfulList() throws Exception {
     registerHealthCheckWithStatus(ServingStatus.SERVING);
-
+  
     var plugin = createSinglePluginDefinitionWithName("test");
     RemoteVulnDetector pluginToTest = getNewRemoteVulnDetectorInstance();
     serviceRegistry.addService(
@@ -168,9 +180,15 @@ public final class RemoteVulnDetectorImplTest {
     assertThat(getNewRemoteVulnDetectorInstance().getAllPlugins()).isEmpty();
   }
 
-  @Test
+  @Test(timeout = 30000L)
   public void getAllPlugins_withRpcError_throwsLanguageServerException() throws Exception {
     registerHealthCheckWithError();
+    assertThrows(LanguageServerException.class, getNewRemoteVulnDetectorInstance()::getAllPlugins);
+  }
+
+  @Test(timeout = 30000L)
+  public void getAllPlugins_withUnregisteredHealthService_throwsLanguageServerException()
+      throws Exception {
     assertThrows(LanguageServerException.class, getNewRemoteVulnDetectorInstance()::getAllPlugins);
   }
 
@@ -190,7 +208,9 @@ public final class RemoteVulnDetectorImplTest {
                 bind(RemoteVulnDetector.class)
                     .toInstance(
                         new RemoteVulnDetectorImpl(
-                            InProcessChannelBuilder.forName(serverName).directExecutor().build()));
+                            InProcessChannelBuilder.forName(serverName).directExecutor().build(),
+                            BACKOFF,
+                            MAX_ATTEMPTS));
               }
             })
         .getInstance(RemoteVulnDetector.class);

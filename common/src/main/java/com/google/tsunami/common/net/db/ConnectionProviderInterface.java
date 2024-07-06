@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Google LLC
+ * Copyright 2023 Google LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,18 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.tsunami.common.server;
+package com.google.tsunami.common.net.db;
 
-import com.google.auto.value.AutoValue;
+import java.sql.Connection;
+import java.sql.SQLException;
 
-/** Command to spawn a language server and associated port. */
-@AutoValue
-public abstract class ServerPortCommand {
-  public static ServerPortCommand create(String serverCommand, String port) {
-    return new AutoValue_ServerPortCommand(serverCommand, port);
-  }
-
-  public abstract String serverCommand();
-
-  public abstract String port();
+/** A client interface that communicates with different databases. */
+public interface ConnectionProviderInterface {
+  public Connection getConnection(String url, String user, String password) throws SQLException;
 }

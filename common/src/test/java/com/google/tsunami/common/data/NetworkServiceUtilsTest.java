@@ -106,6 +106,17 @@ public final class NetworkServiceUtilsTest {
   }
 
   @Test
+  public void isWebService_whenHasAtLeastOneHttpMethod_returnsTrue() {
+    assertThat(
+            NetworkServiceUtils.isWebService(
+                NetworkService.newBuilder()
+                    .setServiceName("irrelevantService")
+                    .addSupportedHttpMethods("IrrelevantMethodName")
+                    .build()))
+        .isTrue();
+  }
+
+  @Test
   public void isWebService_whenNonWebService_returnsFalse() {
     assertThat(
             NetworkServiceUtils.isWebService(
@@ -154,6 +165,50 @@ public final class NetworkServiceUtilsTest {
   }
 
   @Test
+  public void isPlainHttp_whenHttpServiceButHasSslVersions_returnsFalse() {
+    assertThat(
+            NetworkServiceUtils.isPlainHttp(
+                NetworkService.newBuilder()
+                    .setServiceName("http")
+                    .addSupportedSslVersions("SSLV3")
+                    .build()))
+        .isFalse();
+  }
+
+  @Test
+  public void isPlainHttp_whenNonHttpServiceButHasSslVersions_returnsFalse() {
+    assertThat(
+            NetworkServiceUtils.isPlainHttp(
+                NetworkService.newBuilder()
+                    .setServiceName("ssh")
+                    .addSupportedSslVersions("SSLV3")
+                    .build()))
+        .isFalse();
+  }
+
+  @Test
+  public void isPlainHttp_whenHttpServiceFromHttpMethodsWithoutSslVersions_returnsTrue() {
+    assertThat(
+            NetworkServiceUtils.isPlainHttp(
+                NetworkService.newBuilder()
+                    .setServiceName("ssh")
+                    .addSupportedHttpMethods("GET")
+                    .build()))
+        .isTrue();
+  }
+
+  @Test
+  public void isPlainHttp_whenHttpServiceWithSslVersions_returnsFalse() {
+    assertThat(
+            NetworkServiceUtils.isPlainHttp(
+                NetworkService.newBuilder()
+                    .setServiceName("http")
+                    .addSupportedSslVersions("SSLV3")
+                    .build()))
+        .isFalse();
+  }
+
+  @Test
   public void getServiceName_whenNonWebService_returnsServiceName() {
     assertThat(
             NetworkServiceUtils.getServiceName(
@@ -185,6 +240,34 @@ public final class NetworkServiceUtilsTest {
                     .setSoftware(Software.newBuilder().setName("WordPress"))
                     .build()))
         .isEqualTo("wordpress");
+  }
+
+  @Test
+  public void getWebServiceName_whenWebServiceWithSoftware_returnsWebServiceName() {
+    assertThat(
+            NetworkServiceUtils.getWebServiceName(
+                NetworkService.newBuilder()
+                    .setNetworkEndpoint(forIpAndPort("127.0.0.1", 8080))
+                    .setServiceName("http")
+                    .setServiceContext(
+                        ServiceContext.newBuilder()
+                            .setWebServiceContext(
+                                WebServiceContext.newBuilder()
+                                    .setSoftware(Software.newBuilder().setName("jenkins"))))
+                    .build()))
+        .isEqualTo("jenkins");
+  }
+
+  @Test
+  public void getServiceName_whenWebServiceNoContext_returnsServiceName() {
+    assertThat(
+            NetworkServiceUtils.getWebServiceName(
+                NetworkService.newBuilder()
+                    .setNetworkEndpoint(forIpAndPort("127.0.0.1", 8080))
+                    .setServiceName("http")
+                    .setSoftware(Software.newBuilder().setName("nothttp"))
+                    .build()))
+        .isEqualTo("http");
   }
 
   @Test

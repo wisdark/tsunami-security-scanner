@@ -16,7 +16,6 @@
 package com.google.tsunami.common.net;
 
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.common.truth.Truth8.assertThat;
 import static com.google.tsunami.common.net.UrlUtils.allSubPaths;
 import static com.google.tsunami.common.net.UrlUtils.removeLeadingSlashes;
 import static com.google.tsunami.common.net.UrlUtils.removeTrailingSlashes;

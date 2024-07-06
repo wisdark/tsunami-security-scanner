@@ -18,9 +18,9 @@ package com.google.tsunami.main.cli.server;
 import static com.google.common.truth.Truth.assertThat;
 
 import com.google.common.collect.ImmutableList;
-import com.google.inject.AbstractModule;
 import com.google.inject.Guice;
-import com.google.tsunami.common.server.ServerPortCommand;
+import com.google.tsunami.common.server.LanguageServerCommand;
+import java.time.Duration;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -30,19 +30,50 @@ public final class RemoteServerLoaderTest {
 
   @Test
   public void runServerProcess_whenPathExistsAndNormalPort_returnsValidProcessList() {
-    ImmutableList<ServerPortCommand> commands =
-        ImmutableList.of(ServerPortCommand.create("/bin/sh", "34567"));
+    ImmutableList<LanguageServerCommand> commands =
+        ImmutableList.of(
+            LanguageServerCommand.create(
+                "/bin/sh",
+                "",
+                "34567",
+                "34",
+                "/output-here",
+                false,
+                Duration.ofSeconds(10),
+                "157.34.0.2",
+                8080,
+                "157.34.0.2:8881"));
+
     RemoteServerLoader loader =
-        Guice.createInjector(
-                new AbstractModule() {
-                  @Override
-                  protected void configure() {
-                    install(new RemoteServerLoaderModule(commands));
-                  }
-                })
+        Guice.createInjector(new RemoteServerLoaderModule(commands))
             .getInstance(RemoteServerLoader.class);
     var processList = loader.runServerProcesses();
     assertThat(processList).hasSize(1);
     assertThat(processList.get(0)).isNotNull();
   }
+
+  @Test
+  public void runServerProcess_whenServerAddressExistsAndNormalPort_returnsEmptyProcessList() {
+    ImmutableList<LanguageServerCommand> commands =
+        ImmutableList.of(
+            LanguageServerCommand.create(
+                "",
+                "127.0.0.1",
+                "34567",
+                "34",
+                "/output-here",
+                false,
+                Duration.ofSeconds(10),
+                "157.34.0.2",
+                8080,
+                "157.34.0.2:8881"));
+
+    RemoteServerLoader loader =
+        Guice.createInjector(new RemoteServerLoaderModule(commands))
+            .getInstance(RemoteServerLoader.class);
+    var processList = loader.runServerProcesses();
+    assertThat(processList).isEmpty();
+  }
 }
+
+

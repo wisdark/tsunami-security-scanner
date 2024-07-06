@@ -60,7 +60,16 @@ To quickly get started with Tsunami scans,
  1.  Print example Tsunami command for scanning `127.0.0.1` using the previously
      generated artifacts.
 
+#### Advanced Configuration with Callback Server and Python Language Server
+
+ 1.  execute the following command:
+
+     ```
+     bash -c "$(curl -sfL https://raw.githubusercontent.com/google/tsunami-security-scanner/master/quick_start_advanced.sh)"
+     ```
+
 ### Docker install
+
 1.  start a vulnerable application that can be identified by Tsunami, e.g. an
     unauthenticated Jupyter Notebook server. The easiest way is to use a docker
     image:
@@ -71,15 +80,24 @@ To quickly get started with Tsunami scans,
 
 1.  build the docker image for Tsunami:
 
-    ```
+    ```shell
     docker build -t tsunami .
     ```
 
-1. run the Tsunami image. The logs can be saved to the host machine by mounting a volume:
+1.  run the Tsunami image. The logs can be saved to the host machine by mounting
+    a volume:
 
+    ```shell
+    docker run --network="host" -v "$(pwd)/logs":/usr/tsunami/logs tsunami
     ```
-    docker run  --network="host" -v "$(pwd)/logs":/usr/tsunami/logs tsunami
+
+1.  debugging issues with Tsunami container. The tsunami container is based on
+    Debian. To run debug tools simply exec into the container and install them:
+
+    ```shell
+    docker exec -it tsunami bash
     ```
+
 ## Contributing
 
 Read how to [contribute to Tsunami](docs/contributing.md).

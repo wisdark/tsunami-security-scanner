@@ -24,7 +24,6 @@ import static com.google.common.net.HttpHeaders.HOST;
 import static com.google.common.net.HttpHeaders.LOCATION;
 import static com.google.common.net.HttpHeaders.USER_AGENT;
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.common.truth.Truth8.assertThat;
 import static com.google.tsunami.common.net.http.HttpRequest.get;
 import static com.google.tsunami.common.net.http.HttpRequest.head;
 import static com.google.tsunami.common.net.http.HttpRequest.post;
@@ -709,6 +708,57 @@ public final class OkHttpHttpClientTest {
                 networkService));
 
     mockWebServer.shutdown();
+  }
+
+  @Test
+  public void send_default_userAgent() throws IOException, InterruptedException {
+    String responseBody = "test response";
+    mockWebServer.enqueue(
+        new MockResponse()
+            .setResponseCode(HttpStatus.OK.code())
+            .setHeader(CONTENT_TYPE, MediaType.PLAIN_TEXT_UTF_8.toString())
+            .setBody(responseBody));
+    mockWebServer.start();
+
+    HttpUrl baseUrl = mockWebServer.url("/");
+    httpClient.send(get(baseUrl.toString()).withEmptyHeaders().build());
+
+    assertThat(mockWebServer.takeRequest().getHeader(USER_AGENT))
+        .isEqualTo(HttpClient.TSUNAMI_USER_AGENT);
+  }
+
+  @Test
+  public void send_overridden_userAgent() throws IOException, InterruptedException {
+    String responseBody = "test response";
+    mockWebServer.enqueue(
+        new MockResponse()
+            .setResponseCode(HttpStatus.OK.code())
+            .setHeader(CONTENT_TYPE, MediaType.PLAIN_TEXT_UTF_8.toString())
+            .setBody(responseBody));
+    mockWebServer.start();
+
+    final String userAgentOverride = "User Agent In Override";
+
+    HttpClientCliOptions cliOptions = new HttpClientCliOptions();
+    cliOptions.userAgent = userAgentOverride;
+    HttpClientConfigProperties configProperties = new HttpClientConfigProperties();
+    cliOptions.trustAllCertificates = configProperties.trustAllCertificates = true;
+    HttpClient httpClient =
+        Guice.createInjector(
+                new AbstractModule() {
+                  @Override
+                  protected void configure() {
+                    install(new HttpClientModule.Builder().build());
+                    bind(HttpClientCliOptions.class).toInstance(cliOptions);
+                    bind(HttpClientConfigProperties.class).toInstance(configProperties);
+                  }
+                })
+            .getInstance(HttpClient.class);
+
+    HttpUrl baseUrl = mockWebServer.url("/");
+    httpClient.send(get(baseUrl.toString()).withEmptyHeaders().build());
+
+    assertThat(mockWebServer.takeRequest().getHeader(USER_AGENT)).isEqualTo(userAgentOverride);
   }
 
   private MockWebServer startMockWebServerWithSsl(InetAddress serverAddress)
