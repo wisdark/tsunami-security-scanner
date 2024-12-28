@@ -184,7 +184,7 @@ public final class TsunamiCli {
 
       install(new SystemUtcClockModule());
       install(new CommandExecutorModule());
-      install(new HttpClientModule.Builder().setLogId(mco.logId).build());
+      install(new HttpClientModule.Builder().setLogId(mco.getLogId()).build());
       install(new GoogleCloudStorageArchiverModule());
       install(new ScanResultsArchiverModule());
       install(new PluginExecutionModule());
@@ -211,34 +211,20 @@ public final class TsunamiCli {
       if (paths.isEmpty() && remoteServerAddresses.isEmpty()) {
         return ImmutableList.of();
       }
-      String lngOutputDir = extractOutputDir(srao);
-      boolean lngTrustAllSslCertCli;
-      Duration lngConnectDuration;
-      String lngCallbackAddress;
-      Integer lngCallbackPort;
-      String lngPollingUri;
-      if (tsunamiConfig.getRawConfigData().isEmpty()) {
-        lngTrustAllSslCertCli = trustAllSslCertCli != null && trustAllSslCertCli.booleanValue();
-        lngConnectDuration = Duration.ZERO;
-        lngCallbackAddress = "";
-        lngCallbackPort = 0;
-        lngPollingUri = "";
-      } else {
-        Object callbackConfig =
-            ((Map) tsunamiConfig.getRawConfigData().get("plugin")).get("callbackserver");
-        Object httpClientConfig =
-            ((Map) ((Map) tsunamiConfig.getRawConfigData().get("common")).get("net")).get("http");
-        boolean trustAllSslCertConfig =
-            (boolean) ((Map) httpClientConfig).get("trust_all_certificates");
 
-        lngTrustAllSslCertCli =
-            trustAllSslCertCli == null ? trustAllSslCertConfig : trustAllSslCertCli.booleanValue();
-        lngConnectDuration =
-            Duration.ofSeconds((int) ((Map) httpClientConfig).get("connect_timeout_seconds"));
-        lngCallbackAddress = (String) ((Map) callbackConfig).get("callback_address");
-        lngCallbackPort = (Integer) ((Map) callbackConfig).get("callback_port");
-        lngPollingUri = (String) ((Map) callbackConfig).get("polling_uri");
-      }
+      Map<String, Object> callbackConfig = tsunamiConfig.readConfigValue("plugin.callbackserver");
+      Map<String, Object> httpClientConfig = tsunamiConfig.readConfigValue("common.net.http");
+      boolean trustAllSslCertConfig =
+          (boolean) httpClientConfig.getOrDefault("trust_all_certificates", false);
+
+      String lngOutputDir = extractOutputDir(srao);
+      boolean lngTrustAllSslCertCli =
+          trustAllSslCertCli != null ? trustAllSslCertCli.booleanValue() : trustAllSslCertConfig;
+      Duration lngConnectDuration =
+          Duration.ofSeconds((int) httpClientConfig.getOrDefault("connect_timeout_seconds", 0));
+      String lngCallbackAddress = (String) callbackConfig.getOrDefault("callback_address", "");
+      Integer lngCallbackPort = (Integer) callbackConfig.getOrDefault("callback_port", 0);
+      String lngPollingUri = (String) callbackConfig.getOrDefault("polling_uri", "");
 
       for (int i = 0; i < paths.size(); ++i) {
         commands.add(
@@ -305,6 +291,7 @@ public final class TsunamiCli {
         System.exit(1);
       }
       logger.atInfo().log("Full Tsunami scan took %s.", stopwatch.stop());
+      System.exit(0);
     } catch (Throwable e) {
       logger.atSevere().withCause(e).log("Exiting due to workflow execution exceptions.");
       if (e instanceof InterruptedException) {

@@ -24,18 +24,21 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.google.common.flogger.GoogleLogger;
 import com.google.common.util.concurrent.Uninterruptibles;
+import com.google.tsunami.common.server.CompactRunRequestHelper;
 import com.google.tsunami.proto.DetectionReportList;
 import com.google.tsunami.proto.ListPluginsRequest;
 import com.google.tsunami.proto.MatchedPlugin;
 import com.google.tsunami.proto.NetworkService;
 import com.google.tsunami.proto.PluginDefinition;
 import com.google.tsunami.proto.RunRequest;
+import com.google.tsunami.proto.RunResponse;
 import com.google.tsunami.proto.TargetInfo;
 import io.grpc.Channel;
 import io.grpc.Deadline;
 import io.grpc.health.v1.HealthCheckRequest;
 import io.grpc.health.v1.HealthCheckResponse;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -43,24 +46,28 @@ import java.util.concurrent.TimeUnit;
 /** Facilitates communication with remote detectors. */
 public final class RemoteVulnDetectorImpl implements RemoteVulnDetector {
   private static final GoogleLogger logger = GoogleLogger.forEnclosingClass();
-  // Default duration deadline for all RPC calls
+
+  // Default duration deadline for the detect() RPC call
   // Remote detectors, especially ones using the callback server, require additional buffer to send
   // requests and responses.
-  private static final Deadline DEFAULT_DEADLINE = Deadline.after(150, SECONDS);
+  private static final Duration DEFAULT_DEADLINE_DETECT = Duration.ofSeconds(150);
+  // For all other operations, including health check:
+  private static final Duration DEFAULT_DEADLINE = Duration.ofSeconds(10);
 
   private final PluginServiceClient service;
   private final Set<MatchedPlugin> pluginsToRun;
   private final ExponentialBackOff backoff;
   private final int maxAttempts;
-  private final Deadline deadline;
+  private final Duration detectDeadline;
+  private boolean wantCompactRunRequest = false;
 
   RemoteVulnDetectorImpl(
-      Channel channel, ExponentialBackOff backoff, int maxAttempts, Deadline deadline) {
+      Channel channel, ExponentialBackOff backoff, int maxAttempts, Duration detectDeadline) {
     this.service = new PluginServiceClient(checkNotNull(channel));
     this.pluginsToRun = Sets.newHashSet();
     this.backoff = backoff;
     this.maxAttempts = maxAttempts;
-    this.deadline = deadline != null ? deadline : DEFAULT_DEADLINE;
+    this.detectDeadline = detectDeadline != null ? detectDeadline : DEFAULT_DEADLINE_DETECT;
   }
 
   @Override
@@ -68,13 +75,24 @@ public final class RemoteVulnDetectorImpl implements RemoteVulnDetector {
       TargetInfo target, ImmutableList<NetworkService> matchedServices) {
     try {
       if (checkHealthWithBackoffs()) {
+        var runRequest =
+            RunRequest.newBuilder().setTarget(target).addAllPlugins(pluginsToRun).build();
         logger.atInfo().log("Detecting with language server plugins...");
-        return service
-            .runWithDeadline(
-                RunRequest.newBuilder().setTarget(target).addAllPlugins(pluginsToRun).build(),
-                deadline)
-            .get()
-            .getReports();
+        RunResponse runResponse;
+        if (this.wantCompactRunRequest) {
+          var runCompactRequest = CompactRunRequestHelper.compress(runRequest);
+          runResponse =
+              service
+                  .runCompactWithDeadline(
+                      runCompactRequest, Deadline.after(detectDeadline.toSeconds(), SECONDS))
+                  .get();
+        } else {
+          runResponse =
+              service
+                  .runWithDeadline(runRequest, Deadline.after(detectDeadline.toSeconds(), SECONDS))
+                  .get();
+        }
+        return runResponse.getReports();
       }
     } catch (InterruptedException | ExecutionException e) {
       throw new LanguageServerException("Failed to get response from language server.", e);
@@ -87,11 +105,16 @@ public final class RemoteVulnDetectorImpl implements RemoteVulnDetector {
     try {
       if (checkHealthWithBackoffs()) {
         logger.atInfo().log("Getting language server plugins...");
-        return ImmutableList.copyOf(
+        var listPluginsResponse =
             service
-                .listPluginsWithDeadline(ListPluginsRequest.getDefaultInstance(), DEFAULT_DEADLINE)
-                .get()
-                .getPluginsList());
+                .listPluginsWithDeadline(
+                    ListPluginsRequest.getDefaultInstance(),
+                    Deadline.after(DEFAULT_DEADLINE.toSeconds(), SECONDS))
+                .get();
+        // Note: each plugin service client has a dedicated RemoteVulnDetectorImpl instance,
+        // so we can safely set this flag here.
+        this.wantCompactRunRequest = listPluginsResponse.getWantCompactRunRequest();
+        return ImmutableList.copyOf(listPluginsResponse.getPluginsList());
       } else {
         return ImmutableList.of();
       }
@@ -111,7 +134,9 @@ public final class RemoteVulnDetectorImpl implements RemoteVulnDetector {
       try {
         var healthy =
             service
-                .checkHealthWithDeadline(HealthCheckRequest.getDefaultInstance(), DEFAULT_DEADLINE)
+                .checkHealthWithDeadline(
+                    HealthCheckRequest.getDefaultInstance(),
+                    Deadline.after(DEFAULT_DEADLINE.toSeconds(), SECONDS))
                 .get()
                 .getStatus()
                 .equals(HealthCheckResponse.ServingStatus.SERVING);
